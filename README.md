@@ -82,6 +82,7 @@
 > 从一个想法，到一部完整的作品，我们陪你织就每一段文字。
 
 ## 关注MOAONO项目
-- **官网** ：[http](http://www.moaono.com/)
+- **官网** ：[MOAONO数字生活](http://www.moaono.com/)
 - **微信公众号**：
+  
   ![](https://github.com/wwaa321/Story-Weaver/blob/main/wechat_qrcode.jpg)

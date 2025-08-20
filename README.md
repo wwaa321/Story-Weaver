@@ -12,6 +12,7 @@
 ### 🌟 为什么选择织文者？
 
 在碎片化信息中构建宏大叙事，需要的不只是灵感，更需要一套清晰的系统。织文者通过 **结构化管理 + 元数据驱动 + 多维可视化**，帮助你从零开始，有条不紊地编织属于你的故事世界。
+
 ![](https://github.com/wwaa321/Story-Weaver/blob/main/Story-Weaver-1.png)
 ---
 
@@ -80,3 +81,7 @@
 > 让灵感有迹可循，让叙事井然有序。  
 > 从一个想法，到一部完整的作品，我们陪你织就每一段文字。
 
+## 关注MOAONO项目
+- **官网** ：[http](http://www.moaono.com/)
+- **微信公众号**：
+  ![](https://github.com/wwaa321/Story-Weaver/blob/main/wechat_qrcode.jpg)

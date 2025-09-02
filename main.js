@@ -492,6 +492,12 @@ var _ProjectService = class {
     this.eventRefs = [];
     /** 文件系统监听是否已启用 */
     this.fileSystemListenerEnabled = false;
+    /** 待更新的字数统计缓存 */
+    this.pendingWordCountUpdates = /* @__PURE__ */ new Map();
+    /** 上次更新的字数缓存，避免重复更新 */
+    this.lastSavedWordCounts = /* @__PURE__ */ new Map();
+    /** 每日字数快照，用于计算今日新增 */
+    this.dailyWordSnapshots = /* @__PURE__ */ new Map();
     this.app = app;
     this.metadataManager = new MetadataManager(app);
   }
@@ -514,7 +520,7 @@ var _ProjectService = class {
    */
   static destroyInstance() {
     if (_ProjectService.instance) {
-      _ProjectService.instance.cleanup();
+      _ProjectService.instance.cleanup().catch(console.error);
       _ProjectService.instance = null;
     }
   }
@@ -556,6 +562,7 @@ var _ProjectService = class {
         rootPath: projectPath,
         targetWordCount: frontmatter.target_word_count || 1e5,
         currentWordCount: frontmatter.current_word_count || 0,
+        dailyTarget: frontmatter.daily_target || 500,
         createdDate: frontmatter.created_date ? new Date(frontmatter.created_date) : new Date(),
         lastModified: new Date(dashboardFile.stat.mtime),
         synopsis: frontmatter.synopsis || "",
@@ -569,6 +576,7 @@ var _ProjectService = class {
       };
       await this.initializeCache();
       this.enableFileSystemListener();
+      await this.loadDailyWordSnapshots();
       console.log(`Project loaded successfully: ${this.currentProject.name}`);
     } catch (error) {
       console.error("Failed to load project:", error);
@@ -1261,6 +1269,7 @@ scene_index: 1
 name: "${name}"
 target_word_count: 100000
 current_word_count: 0
+daily_target: 500
 created_date: ${this.getUTC8TimeString()}
 synopsis: ""
 status: "planning"
@@ -1369,25 +1378,117 @@ SORT file.name
   calculateTodayWords() {
     try {
       const today = new Date();
+      const todayDateString = today.toISOString().split("T")[0];
       const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
       let todayWords = 0;
-      for (const scene of this.sceneCache.values()) {
+      console.log(`Calculating today's words for date: ${todayDateString}`);
+      console.log(`Scene cache size: ${this.sceneCache.size}`);
+      console.log(`Daily snapshots size: ${this.dailyWordSnapshots.size}`);
+      for (const [filePath, scene] of this.sceneCache.entries()) {
+        const currentWordCount = scene.wordCount || 0;
+        const snapshot = this.dailyWordSnapshots.get(filePath);
         const fileModTime = new Date(scene.lastModified);
-        if (fileModTime >= todayStart) {
-          todayWords += scene.wordCount || 0;
+        const wasModifiedToday = fileModTime >= todayStart;
+        console.log(`File ${filePath}: current=${currentWordCount}, modified=${fileModTime.toISOString()}, modifiedToday=${wasModifiedToday}`);
+        let baselineWordCount = 0;
+        let shouldCalculateIncrease = false;
+        if (snapshot) {
+          if (snapshot.date === todayDateString) {
+            if (wasModifiedToday) {
+              baselineWordCount = snapshot.wordCount;
+              shouldCalculateIncrease = true;
+            }
+          } else {
+            if (wasModifiedToday) {
+              baselineWordCount = snapshot.wordCount;
+              shouldCalculateIncrease = true;
+            }
+          }
+        } else {
+          if (wasModifiedToday) {
+            baselineWordCount = 0;
+            shouldCalculateIncrease = true;
+          }
+        }
+        if (shouldCalculateIncrease) {
+          const increase = Math.max(0, currentWordCount - baselineWordCount);
+          todayWords += increase;
+          console.log(`File ${filePath}: baseline=${baselineWordCount}, current=${currentWordCount}, increase=${increase}`);
+        }
+        const existingSnapshot = this.dailyWordSnapshots.get(filePath);
+        if (!existingSnapshot || existingSnapshot.date !== todayDateString) {
+          this.dailyWordSnapshots.set(filePath, {
+            date: todayDateString,
+            wordCount: currentWordCount
+          });
         }
       }
-      if (todayWords === 0) {
-        const totalWords = this.calculateTotalWords();
-        if (totalWords > 0) {
-          const daysSinceCreation = this.currentProject ? Math.max(1, Math.ceil((Date.now() - this.currentProject.createdDate.getTime()) / (1e3 * 60 * 60 * 24))) : 1;
-          todayWords = Math.floor(totalWords / daysSinceCreation);
-        }
-      }
+      console.log(`Today's total word increase: ${todayWords}`);
       return Math.max(0, todayWords);
     } catch (error) {
       console.error("Failed to calculate today words:", error);
       return 0;
+    }
+  }
+  /**
+   * 保存每日字数快照到项目文件
+   * Save daily word snapshots to project file
+   */
+  async saveDailyWordSnapshots() {
+    if (!this.currentProject || this.dailyWordSnapshots.size === 0) {
+      return;
+    }
+    try {
+      const dashboardPath = `${this.currentProject.rootPath}/_project.md`;
+      const dashboardFile = this.app.vault.getAbstractFileByPath(dashboardPath);
+      if (dashboardFile) {
+        const snapshotsData = {};
+        for (const [filePath, snapshot] of this.dailyWordSnapshots.entries()) {
+          snapshotsData[filePath] = snapshot;
+        }
+        await this.app.fileManager.processFrontMatter(dashboardFile, (frontmatter) => {
+          frontmatter.daily_word_snapshots = snapshotsData;
+          frontmatter.last_updated = this.getUTC8TimeString();
+        });
+      }
+    } catch (error) {
+      console.error("Failed to save daily word snapshots:", error);
+    }
+  }
+  /**
+   * 从项目文件加载每日字数快照
+   * Load daily word snapshots from project file
+   */
+  async loadDailyWordSnapshots() {
+    if (!this.currentProject) {
+      return;
+    }
+    try {
+      const dashboardPath = `${this.currentProject.rootPath}/_project.md`;
+      const dashboardFile = this.app.vault.getAbstractFileByPath(dashboardPath);
+      if (dashboardFile) {
+        const fileCache = this.app.metadataCache.getFileCache(dashboardFile);
+        const frontmatter = fileCache == null ? void 0 : fileCache.frontmatter;
+        if (frontmatter && frontmatter.daily_word_snapshots) {
+          const snapshotsData = frontmatter.daily_word_snapshots;
+          const sevenDaysAgo = new Date();
+          sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+          const sevenDaysAgoString = sevenDaysAgo.toISOString().split("T")[0];
+          for (const [filePath, snapshot] of Object.entries(snapshotsData)) {
+            if (typeof snapshot === "object" && snapshot !== null && "date" in snapshot && "wordCount" in snapshot) {
+              const typedSnapshot = snapshot;
+              if (typedSnapshot.date >= sevenDaysAgoString) {
+                this.dailyWordSnapshots.set(filePath, {
+                  date: typedSnapshot.date,
+                  wordCount: typedSnapshot.wordCount
+                });
+              }
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Failed to load daily word snapshots:", error);
     }
   }
   /**
@@ -1454,15 +1555,20 @@ SORT file.name
    * 清理资源
    * Cleanup resources
    */
-  cleanup() {
+  async cleanup() {
+    await this.flushPendingWordCountUpdates();
     this.disableFileSystemListener();
     for (const timer of this.debounceTimers.values()) {
       clearTimeout(timer);
     }
     this.debounceTimers.clear();
+    this.pendingWordCountUpdates.clear();
+    this.lastSavedWordCounts.clear();
+    await this.saveDailyWordSnapshots();
     this.sceneCache.clear();
     this.characterCache.clear();
     this.locationCache.clear();
+    this.dailyWordSnapshots.clear();
     this.currentProject = null;
     this.cacheInitialized = false;
   }
@@ -1563,13 +1669,25 @@ SORT file.name
       }
     });
     const fileModifyRef = this.app.vault.on("modify", (file) => {
+      var _a, _b;
       if (file instanceof import_obsidian.TFile && file.extension === "md") {
+        const debounceDelay = ((_b = (_a = this.settings) == null ? void 0 : _a.wordCountSettings) == null ? void 0 : _b.updateDebounceDelay) || 3e3;
         this.debounce(`modify-${file.path}`, () => {
           this.handleFileModify(file);
-        }, 1e3);
+        }, debounceDelay);
       }
     });
-    this.eventRefs.push(metadataChangeRef, fileCreateRef, fileDeleteRef, fileRenameRef, fileModifyRef);
+    let activeLeafChangeRef = null;
+    if (this.app.workspace) {
+      activeLeafChangeRef = this.app.workspace.on("active-leaf-change", (leaf) => {
+        this.flushPendingWordCountUpdates();
+      });
+    }
+    const eventRefs = [metadataChangeRef, fileCreateRef, fileDeleteRef, fileRenameRef, fileModifyRef];
+    if (activeLeafChangeRef) {
+      eventRefs.push(activeLeafChangeRef);
+    }
+    this.eventRefs.push(...eventRefs);
     this.fileSystemListenerEnabled = true;
     console.log("File system listener enabled");
   }
@@ -1723,7 +1841,7 @@ SORT file.name
     try {
       const fileType = this.getFileType(file.path);
       if (fileType === "scene") {
-        await this.updateSceneWordCountAndCache(file);
+        await this.updateSceneWordCountSmartly(file);
       }
       console.log(`File content updated: ${file.path}`);
     } catch (error) {
@@ -1749,6 +1867,74 @@ SORT file.name
     } catch (error) {
       console.error(`Failed to update word count for scene: ${file.path}`, error);
     }
+  }
+  /**
+   * 智能更新场景字数统计
+   * Smart update scene word count to reduce frequent file modifications
+   */
+  async updateSceneWordCountSmartly(file) {
+    var _a, _b, _c, _d;
+    try {
+      const content = await this.app.vault.read(file);
+      const wordCount = this.calculateWordCount(content, file.path);
+      const lastSavedCount = this.lastSavedWordCounts.get(file.path) || 0;
+      const wordCountDiff = Math.abs(wordCount - lastSavedCount);
+      const scene = this.sceneCache.get(file.path);
+      if (scene) {
+        scene.wordCount = wordCount;
+        scene.lastModified = new Date();
+        this.sceneCache.set(file.path, scene);
+      }
+      const enableRealTimeCount = ((_b = (_a = this.settings) == null ? void 0 : _a.wordCountSettings) == null ? void 0 : _b.enableRealTimeCount) !== false;
+      if (!enableRealTimeCount) {
+        return;
+      }
+      const threshold = ((_d = (_c = this.settings) == null ? void 0 : _c.wordCountSettings) == null ? void 0 : _d.updateThreshold) || 10;
+      const shouldUpdateFile = wordCountDiff >= threshold || lastSavedCount === 0;
+      if (shouldUpdateFile) {
+        this.pendingWordCountUpdates.set(file.path, {
+          wordCount,
+          lastModified: new Date()
+        });
+        console.log(`Queued word count update for ${file.path}: ${wordCount} words (diff: ${wordCountDiff})`);
+      } else {
+        console.log(`Skipped word count update for ${file.path}: change too small (${wordCountDiff} words)`);
+      }
+    } catch (error) {
+      console.error(`Failed to update word count for scene: ${file.path}`, error);
+    }
+  }
+  /**
+   * 立即处理所有待更新的字数统计
+   * Flush all pending word count updates immediately
+   */
+  async flushPendingWordCountUpdates() {
+    if (this.pendingWordCountUpdates.size === 0) {
+      return;
+    }
+    console.log(`Flushing ${this.pendingWordCountUpdates.size} pending word count updates`);
+    const updates = Array.from(this.pendingWordCountUpdates.entries());
+    this.pendingWordCountUpdates.clear();
+    for (const [filePath, updateData] of updates) {
+      try {
+        const file = this.app.vault.getAbstractFileByPath(filePath);
+        if (file) {
+          await this.updateSceneWordCountInFrontmatter(file, updateData.wordCount);
+          const scene = this.sceneCache.get(filePath);
+          if (scene) {
+            scene.wordCount = updateData.wordCount;
+            scene.lastModified = updateData.lastModified;
+            this.sceneCache.set(filePath, scene);
+          }
+          this.lastSavedWordCounts.set(filePath, updateData.wordCount);
+          console.log(`Updated word count for ${filePath}: ${updateData.wordCount} words`);
+        }
+      } catch (error) {
+        console.error(`Failed to flush word count update for ${filePath}:`, error);
+      }
+    }
+    await this.updateProjectCurrentWordCount();
+    await this.saveDailyWordSnapshots();
   }
   /**
    * 更新项目当前字数
@@ -1832,6 +2018,7 @@ SORT file.name
         this.currentProject.name = frontmatter.name || this.currentProject.name;
         this.currentProject.targetWordCount = frontmatter.target_word_count || this.currentProject.targetWordCount;
         this.currentProject.currentWordCount = frontmatter.current_word_count || this.currentProject.currentWordCount;
+        this.currentProject.dailyTarget = frontmatter.daily_target || this.currentProject.dailyTarget;
         this.currentProject.synopsis = frontmatter.synopsis || this.currentProject.synopsis;
         this.currentProject.lastModified = new Date(file.stat.mtime);
         this.currentProject.settings.templatePath = frontmatter.template_path || this.currentProject.settings.templatePath;
@@ -2707,13 +2894,15 @@ var ActivationService = class {
 
 // src/modals/ProjectCreationModal.ts
 var ProjectCreationModal = class extends import_obsidian2.Modal {
-  constructor(app, projectService, activationService, licenseType = "trial") {
+  constructor(app, projectService, activationService, settings, licenseType = "trial") {
     super(app);
     this.projectName = "";
     this.projectPath = "";
     this.projectService = projectService;
     this.activationService = activationService;
+    this.settings = settings;
     this.licenseType = licenseType;
+    this.projectPath = this.settings.defaultProjectPath || "";
   }
   onOpen() {
     const { contentEl } = this;
@@ -2728,12 +2917,14 @@ var ProjectCreationModal = class extends import_obsidian2.Modal {
     }
     new import_obsidian2.Setting(contentEl).setName("\u9879\u76EE\u540D\u79F0").setDesc("\u4E3A\u60A8\u7684\u5C0F\u8BF4\u9879\u76EE\u8D77\u4E00\u4E2A\u540D\u5B57").addText((text) => text.setPlaceholder("\u4F8B\u5982\uFF1A\u6211\u7684\u7B2C\u4E00\u90E8\u5C0F\u8BF4").setValue(this.projectName).onChange(async (value) => {
       this.projectName = value;
-      if (value && !this.projectPath) {
-        this.projectPath = this.sanitizeProjectName(value);
+      if (value && (!this.settings.defaultProjectPath || !this.projectPath)) {
+        const basePath = this.settings.defaultProjectPath || "";
+        const sanitizedName = this.sanitizeProjectName(value);
+        this.projectPath = basePath ? `${basePath}/${sanitizedName}` : sanitizedName;
         this.updatePathDisplay();
       }
     }));
-    new import_obsidian2.Setting(contentEl).setName("\u9879\u76EE\u8DEF\u5F84").setDesc("\u9879\u76EE\u5C06\u5728\u6B64\u8DEF\u5F84\u4E0B\u521B\u5EFA\u6587\u4EF6\u5939\u7ED3\u6784").addText((text) => text.setPlaceholder("\u4F8B\u5982\uFF1A\u6211\u7684\u5C0F\u8BF4\u9879\u76EE").setValue(this.projectPath).onChange(async (value) => {
+    new import_obsidian2.Setting(contentEl).setName("\u9879\u76EE\u8DEF\u5F84").setDesc("\u9879\u76EE\u5C06\u5728\u6B64\u8DEF\u5F84\u4E0B\u521B\u5EFA\u6587\u4EF6\u5939\u7ED3\u6784" + (this.settings.defaultProjectPath ? ` (\u9ED8\u8BA4\u8DEF\u5F84: ${this.settings.defaultProjectPath})` : "")).addText((text) => text.setPlaceholder(this.settings.defaultProjectPath || "\u4F8B\u5982\uFF1A\u6211\u7684\u5C0F\u8BF4\u9879\u76EE").setValue(this.projectPath).onChange(async (value) => {
       this.projectPath = value;
     }));
     const structureEl = contentEl.createDiv("project-structure-info");
@@ -3111,9 +3302,9 @@ var DashboardRenderer = class extends import_obsidian3.Component {
         return;
       }
       console.log("Replacing placeholders with stats:", stats);
-      const dailyTarget = Math.round(project.targetWordCount / 365);
+      const dailyTarget = project.dailyTarget || Math.round(project.targetWordCount / 365);
       const todayWords = stats.todayWords;
-      const remainingWords = Math.max(0, project.targetWordCount - stats.totalWords);
+      const remainingWords = Math.max(0, dailyTarget - todayWords);
       const statusInfo = this.projectService.getProjectStatusInfo(project.status);
       const statusDisplay = `${statusInfo.icon} ${statusInfo.label} (${statusInfo.progress}%)`;
       const walker = document.createTreeWalker(
@@ -3347,12 +3538,13 @@ var DashboardRenderer = class extends import_obsidian3.Component {
       textNodes.forEach((textNode) => {
         let content = textNode.textContent || "";
         if (content.includes("\u65E5\u5747\u76EE\u6807") && content.includes("(disabled; enable in settings)")) {
-          const dailyTarget = Math.round(project.targetWordCount / 365);
+          const dailyTarget = project.dailyTarget || Math.round(project.targetWordCount / 365);
           content = content.replace(/\(disabled; enable in settings\)/, `${dailyTarget}`);
         } else if (content.includes("\u4ECA\u65E5\u603B\u5B57\u6570") && content.includes("(disabled; enable in settings)")) {
           content = content.replace(/\(disabled; enable in settings\)/, `${stats.todayWords}`);
         } else if (content.includes("\u5269\u4F59\u5B57\u6570") && content.includes("(disabled; enable in settings)")) {
-          const remainingWords = Math.max(0, project.targetWordCount - stats.totalWords);
+          const dailyTarget = project.dailyTarget || Math.round(project.targetWordCount / 365);
+          const remainingWords = Math.max(0, dailyTarget - stats.todayWords);
           content = content.replace(/\(disabled; enable in settings\)/, `${remainingWords}`);
         } else if (content.includes("10_\u7A3F\u4EF6")) {
           if (content.includes("(disabled; enable in settings)")) {
@@ -3387,10 +3579,11 @@ var DashboardRenderer = class extends import_obsidian3.Component {
         if (content.includes("today_words")) {
           codeEl.textContent = stats.todayWords.toString();
         } else if (content.includes("remaining_words")) {
-          const remainingWords = Math.max(0, project.targetWordCount - stats.totalWords);
+          const dailyTarget = project.dailyTarget || Math.round(project.targetWordCount / 365);
+          const remainingWords = Math.max(0, dailyTarget - stats.todayWords);
           codeEl.textContent = remainingWords.toString();
         } else if (content.includes("Math.round") && content.includes("365")) {
-          const dailyTarget = Math.round(project.targetWordCount / 365);
+          const dailyTarget = project.dailyTarget || Math.round(project.targetWordCount / 365);
           codeEl.textContent = dailyTarget.toString();
         } else if (content.includes("dv.pages") || content.includes("$=")) {
           if (content.includes("10_\u7A3F\u4EF6") && content.includes(".length")) {
@@ -7826,6 +8019,27 @@ var StoryWeaverSettingsTab = class extends import_obsidian10.PluginSettingTab {
       this.plugin.settings.debugMode = value;
       await this.plugin.saveSettings();
     }));
+    this.addWordCountSettings(containerEl);
+  }
+  /**
+   * 添加字数统计设置
+   * Add word count settings
+   */
+  addWordCountSettings(containerEl) {
+    containerEl.createEl("h3", { text: "\u5B57\u6570\u7EDF\u8BA1\u8BBE\u7F6E" });
+    const wordCountSettings = this.plugin.settings.wordCountSettings;
+    new import_obsidian10.Setting(containerEl).setName("\u542F\u7528\u5B9E\u65F6\u5B57\u6570\u7EDF\u8BA1").setDesc("\u5728\u7F16\u8F91\u573A\u666F\u6587\u4EF6\u65F6\u81EA\u52A8\u66F4\u65B0\u5B57\u6570\u7EDF\u8BA1\u3002\u5173\u95ED\u6B64\u9009\u9879\u53EF\u4EE5\u51CF\u5C11\u6587\u4EF6\u4FEE\u6539\u63D0\u793A\uFF0C\u4F46\u9700\u8981\u624B\u52A8\u66F4\u65B0\u7EDF\u8BA1\u3002").addToggle((toggle) => toggle.setValue(wordCountSettings.enableRealTimeCount).onChange(async (value) => {
+      this.plugin.settings.wordCountSettings.enableRealTimeCount = value;
+      await this.plugin.saveSettings();
+    }));
+    new import_obsidian10.Setting(containerEl).setName("\u66F4\u65B0\u5EF6\u8FDF\u65F6\u95F4").setDesc("\u505C\u6B62\u7F16\u8F91\u540E\u591A\u957F\u65F6\u95F4\u66F4\u65B0\u5B57\u6570\u7EDF\u8BA1\uFF08\u79D2\uFF09\u3002\u589E\u52A0\u5EF6\u8FDF\u53EF\u4EE5\u51CF\u5C11\u9891\u7E41\u7684\u6587\u4EF6\u4FEE\u6539\u63D0\u793A\u3002").addSlider((slider) => slider.setLimits(1, 10, 1).setValue(wordCountSettings.updateDebounceDelay / 1e3).setDynamicTooltip().onChange(async (value) => {
+      this.plugin.settings.wordCountSettings.updateDebounceDelay = value * 1e3;
+      await this.plugin.saveSettings();
+    }));
+    new import_obsidian10.Setting(containerEl).setName("\u5B57\u6570\u53D8\u5316\u9608\u503C").setDesc("\u53EA\u6709\u5B57\u6570\u53D8\u5316\u8D85\u8FC7\u6B64\u503C\u65F6\u624D\u66F4\u65B0\u6587\u4EF6\u3002\u8BBE\u7F6E\u8F83\u5927\u7684\u503C\u53EF\u4EE5\u51CF\u5C11\u9891\u7E41\u66F4\u65B0\u3002").addSlider((slider) => slider.setLimits(1, 50, 1).setValue(wordCountSettings.updateThreshold).setDynamicTooltip().onChange(async (value) => {
+      this.plugin.settings.wordCountSettings.updateThreshold = value;
+      await this.plugin.saveSettings();
+    }));
   }
   /**
    * 添加文件夹结构设置
@@ -7881,7 +8095,12 @@ var DEFAULT_SETTINGS = {
   },
   licenseType: "trial",
   activationCode: "",
-  activatedAt: null
+  activatedAt: null,
+  wordCountSettings: {
+    enableRealTimeCount: true,
+    updateDebounceDelay: 3e3,
+    updateThreshold: 10
+  }
 };
 var StoryWeaverPlugin = class extends import_obsidian11.Plugin {
   /**
@@ -8105,6 +8324,7 @@ var StoryWeaverPlugin = class extends import_obsidian11.Plugin {
       this.app,
       this.projectService,
       this.activationService,
+      this.settings,
       this.settings.licenseType
     );
     modal.open();

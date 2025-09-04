@@ -8103,6 +8103,11 @@ var DEFAULT_SETTINGS = {
   }
 };
 var StoryWeaverPlugin = class extends import_obsidian11.Plugin {
+  constructor() {
+    super(...arguments);
+    /** 项目切换防抖定时器 */
+    this.projectSwitchDebounceTimer = null;
+  }
   /**
    * 插件加载时调用
    * Called when the plugin is loaded
@@ -8298,6 +8303,10 @@ var StoryWeaverPlugin = class extends import_obsidian11.Plugin {
    * Cleanup resources
    */
   cleanup() {
+    if (this.projectSwitchDebounceTimer) {
+      clearTimeout(this.projectSwitchDebounceTimer);
+      this.projectSwitchDebounceTimer = null;
+    }
     if (this.dashboardRenderer) {
       this.dashboardRenderer.unload();
     }
@@ -8447,11 +8456,25 @@ var StoryWeaverPlugin = class extends import_obsidian11.Plugin {
    * 活动叶子变化事件处理
    * Handle active leaf change event
    */
-  onActiveLeafChanged(leaf) {
+  async onActiveLeafChanged(leaf) {
     if (leaf && leaf.view.getViewType() === "markdown") {
       const file = this.app.workspace.getActiveFile();
       if (file) {
         console.log(`Active file changed: ${file.path}`);
+        if (this.projectSwitchDebounceTimer) {
+          clearTimeout(this.projectSwitchDebounceTimer);
+        }
+        this.projectSwitchDebounceTimer = setTimeout(async () => {
+          try {
+            const projectSwitched = await this.projectService.autoLoadProject(file.path);
+            if (projectSwitched) {
+              console.log("Project switched automatically, refreshing views...");
+              this.notifyViewsProjectLoaded();
+            }
+          } catch (error) {
+            console.error("Failed to auto-switch project:", error);
+          }
+        }, 300);
       }
     }
   }

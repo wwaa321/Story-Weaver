@@ -917,11 +917,8 @@ var _ProjectService = class {
     try {
       const metadata = this.app.metadataCache.getFileCache(file);
       const frontmatter = metadata == null ? void 0 : metadata.frontmatter;
-      const pathParts = file.path.split("/");
-      const fileName = file.basename;
-      const indexMatch = fileName.match(/^(\d+)-(\d+)/);
-      const chapterIndex = indexMatch ? parseInt(indexMatch[1]) : 0;
-      const sceneIndex = indexMatch ? parseInt(indexMatch[2]) : 0;
+      const indexInfo = this.parseSceneIndexInfo(file, frontmatter);
+      console.log(`Scene index parsing for ${file.path}:`, indexInfo);
       let wordCount = (frontmatter == null ? void 0 : frontmatter.word_count) || 0;
       console.log(`Scene ${file.path}: frontmatter word_count = ${frontmatter == null ? void 0 : frontmatter.word_count}`);
       if (!(frontmatter == null ? void 0 : frontmatter.word_count)) {
@@ -939,8 +936,8 @@ var _ProjectService = class {
         storyTime: (frontmatter == null ? void 0 : frontmatter.story_time) ? new Date(frontmatter.story_time) : null,
         synopsis: (frontmatter == null ? void 0 : frontmatter.synopsis) || "",
         wordCount,
-        chapterIndex,
-        sceneIndex,
+        chapterIndex: indexInfo.chapterIndex,
+        sceneIndex: indexInfo.sceneIndex,
         tags: (frontmatter == null ? void 0 : frontmatter.tags) || [],
         lastModified: new Date(file.stat.mtime)
       };
@@ -1300,16 +1297,7 @@ SORT status
 \`\`\`
 
 ### \u7AE0\u8282\u5B57\u6570\u7EDF\u8BA1
-\`\`\`dataview
-TABLE WITHOUT ID
-  chapter_index as "\u7AE0\u8282",
-  length(rows) as "\u573A\u666F\u6570",
-  sum(rows.word_count) as "\u5B57\u6570"
-FROM "${path}/10_\u7A3F\u4EF6"
-WHERE tags AND contains(tags, "scene") AND chapter_index
-GROUP BY chapter_index
-SORT chapter_index
-\`\`\`
+{{CHAPTER_STATISTICS}}
 
 ## \u{1F4DA} \u89D2\u8272\u7BA1\u7406
 
@@ -1456,6 +1444,206 @@ SORT file.name
     }
   }
   /**
+   * 智能解析场景索引信息
+   * Intelligently parse scene index information
+   */
+  parseSceneIndexInfo(file, frontmatter) {
+    let chapterIndex = (frontmatter == null ? void 0 : frontmatter.chapter_index) || (frontmatter == null ? void 0 : frontmatter.chapterIndex);
+    let sceneIndex = (frontmatter == null ? void 0 : frontmatter.scene_index) || (frontmatter == null ? void 0 : frontmatter.sceneIndex);
+    if (!chapterIndex || !sceneIndex) {
+      const pathInfo = this.parseScenePathInfo(file.path, file.basename);
+      chapterIndex = chapterIndex || pathInfo.chapterIndex;
+      sceneIndex = sceneIndex || pathInfo.sceneIndex;
+    }
+    if (!chapterIndex || !sceneIndex) {
+      const positionInfo = this.getScenePositionInfo(file.path);
+      chapterIndex = chapterIndex || positionInfo.chapterIndex;
+      sceneIndex = sceneIndex || positionInfo.sceneIndex;
+    }
+    return {
+      chapterIndex: Math.max(1, chapterIndex || 1),
+      sceneIndex: Math.max(1, sceneIndex || 1)
+    };
+  }
+  /**
+   * 从文件路径和文件名解析场景索引信息
+   * Parse scene index info from file path and name
+   */
+  parseScenePathInfo(filePath, fileName) {
+    let chapterIndex = 0;
+    let sceneIndex = 0;
+    const fileNamePatterns = [
+      /^(\d+)-(\d+)/,
+      // 01-01 格式
+      /^(\d+)\.(\d+)/,
+      // 01.01 格式  
+      /^(\d+)_(\d+)/,
+      // 01_01 格式
+      /第(\d+)章.*第(\d+)节/,
+      // 第1章第1节 格式
+      /第(\d+)章.*场景(\d+)/,
+      // 第1章场景1 格式
+      /章(\d+).*节(\d+)/,
+      // 章1节1 格式
+      /c(\d+)s(\d+)/i,
+      // c1s1 格式
+      /chapter(\d+)scene(\d+)/i
+      // chapter1scene1 格式
+    ];
+    for (const pattern of fileNamePatterns) {
+      const match = fileName.match(pattern);
+      if (match) {
+        chapterIndex = parseInt(match[1]);
+        sceneIndex = parseInt(match[2]);
+        break;
+      }
+    }
+    if (!chapterIndex) {
+      chapterIndex = this.extractChapterIndexFromPath(filePath);
+    }
+    if (!sceneIndex) {
+      const singleNumberMatch = fileName.match(/^(\d+)/);
+      if (singleNumberMatch) {
+        sceneIndex = parseInt(singleNumberMatch[1]);
+      }
+    }
+    return { chapterIndex, sceneIndex };
+  }
+  /**
+   * 从文件路径提取章节索引
+   * Extract chapter index from file path
+   */
+  extractChapterIndexFromPath(filePath) {
+    var _a, _b;
+    const pathParts = filePath.split("/");
+    const scenesFolder = ((_b = (_a = this.settings) == null ? void 0 : _a.folderStructure) == null ? void 0 : _b.scenes) || "10_\u7A3F\u4EF6";
+    const scenesFolderIndex = pathParts.findIndex((part) => part === scenesFolder);
+    if (scenesFolderIndex >= 0) {
+      for (let i = scenesFolderIndex + 1; i < pathParts.length - 1; i++) {
+        const folderName = pathParts[i];
+        const chapterIndex = this.extractNumberFromFolderName(folderName);
+        if (chapterIndex > 0) {
+          return chapterIndex;
+        }
+      }
+    }
+    return 0;
+  }
+  /**
+   * 从文件夹名称提取数字索引
+   * Extract number index from folder name
+   */
+  extractNumberFromFolderName(folderName) {
+    const patterns = [
+      /第(\d+)章/,
+      // 第1章
+      /第(\d+)卷/,
+      // 第1卷
+      /章(\d+)/,
+      // 章1
+      /卷(\d+)/,
+      // 卷1
+      /chapter(\d+)/i,
+      // chapter1
+      /vol(?:ume)?(\d+)/i,
+      // vol1, volume1
+      /^(\d+)/,
+      // 纯数字开头
+      /(\d+)$/
+      // 纯数字结尾
+    ];
+    for (const pattern of patterns) {
+      const match = folderName.match(pattern);
+      if (match) {
+        return parseInt(match[1]);
+      }
+    }
+    const chineseNumber = this.parseChineseNumber(folderName);
+    if (chineseNumber > 0) {
+      return chineseNumber;
+    }
+    return 0;
+  }
+  /**
+   * 解析中文数字
+   * Parse Chinese numbers
+   */
+  parseChineseNumber(text) {
+    const chineseNumbers = {
+      "\u4E00": 1,
+      "\u4E8C": 2,
+      "\u4E09": 3,
+      "\u56DB": 4,
+      "\u4E94": 5,
+      "\u516D": 6,
+      "\u4E03": 7,
+      "\u516B": 8,
+      "\u4E5D": 9,
+      "\u5341": 10,
+      "\u58F9": 1,
+      "\u8D30": 2,
+      "\u53C1": 3,
+      "\u8086": 4,
+      "\u4F0D": 5,
+      "\u9646": 6,
+      "\u67D2": 7,
+      "\u634C": 8,
+      "\u7396": 9,
+      "\u62FE": 10
+    };
+    for (const [chinese, number] of Object.entries(chineseNumbers)) {
+      if (text.includes(chinese)) {
+        return number;
+      }
+    }
+    return 0;
+  }
+  /**
+   * 根据文件位置获取场景索引信息（fallback方法）
+   * Get scene index info based on file position (fallback method)
+   */
+  getScenePositionInfo(filePath) {
+    try {
+      const pathParts = filePath.split("/");
+      const folderPath = pathParts.slice(0, -1).join("/");
+      const allFiles = this.app.vault.getFiles().filter(
+        (file) => file.extension === "md" && file.path.startsWith(folderPath + "/") && file.path.split("/").length === pathParts.length
+      ).sort((a, b) => a.name.localeCompare(b.name));
+      const fileIndex = allFiles.findIndex((file) => file.path === filePath);
+      const sceneIndex = fileIndex >= 0 ? fileIndex + 1 : 1;
+      let chapterIndex = this.extractChapterIndexFromPath(filePath);
+      if (!chapterIndex) {
+        chapterIndex = this.getFolderPositionIndex(folderPath);
+      }
+      return {
+        chapterIndex: Math.max(1, chapterIndex),
+        sceneIndex: Math.max(1, sceneIndex)
+      };
+    } catch (error) {
+      console.warn("Failed to get scene position info:", error);
+      return { chapterIndex: 1, sceneIndex: 1 };
+    }
+  }
+  /**
+   * 根据文件夹位置获取索引
+   * Get folder position index
+   */
+  getFolderPositionIndex(folderPath) {
+    try {
+      const pathParts = folderPath.split("/");
+      const parentPath = pathParts.slice(0, -1).join("/");
+      const folderName = pathParts[pathParts.length - 1];
+      const siblingFolders = this.app.vault.getAllLoadedFiles().filter(
+        (file) => file.path.startsWith(parentPath + "/") && file.path.split("/").length === pathParts.length && file.path !== folderPath
+      ).map((file) => file.path.split("/").pop()).filter((name) => name).sort();
+      const folderIndex = siblingFolders.indexOf(folderName);
+      return folderIndex >= 0 ? folderIndex + 1 : 1;
+    } catch (error) {
+      console.warn("Failed to get folder position index:", error);
+      return 1;
+    }
+  }
+  /**
    * 从项目文件加载每日字数快照
    * Load daily word snapshots from project file
    */
@@ -1498,9 +1686,46 @@ SORT file.name
   calculateChapterCount() {
     const chapters = /* @__PURE__ */ new Set();
     for (const scene of this.sceneCache.values()) {
-      chapters.add(scene.chapterIndex);
+      const chapterFolderName = this.extractChapterFolderName(scene.path);
+      if (chapterFolderName) {
+        chapters.add(chapterFolderName);
+      } else {
+        chapters.add(`chapter-${scene.chapterIndex}`);
+      }
     }
     return chapters.size;
+  }
+  /**
+   * 从文件路径中提取章节文件夹名称
+   * Extract chapter folder name from file path
+   */
+  extractChapterFolderName(filePath) {
+    const pathParts = filePath.split("/");
+    const scenesFolderIndex = this.findScenesFolderIndex(pathParts);
+    if (scenesFolderIndex >= 0) {
+      if (pathParts.length > scenesFolderIndex + 2) {
+        const chapterFolder = pathParts[scenesFolderIndex + 2];
+        if (!chapterFolder.endsWith(".md")) {
+          const volumeFolder = pathParts[scenesFolderIndex + 1];
+          return `${volumeFolder}/${chapterFolder}`;
+        }
+      }
+      if (pathParts.length > scenesFolderIndex + 1) {
+        const volumeFolder = pathParts[scenesFolderIndex + 1];
+        if (!volumeFolder.endsWith(".md")) {
+          return `${volumeFolder}/\u9ED8\u8BA4\u7AE0\u8282`;
+        }
+      }
+    }
+    return null;
+  }
+  /**
+   * 查找场景文件夹索引
+   * Find scenes folder index
+   */
+  findScenesFolderIndex(pathParts) {
+    const scenesFolderNames = ["scenes", "Scenes", "\u573A\u666F", "\u7AE0\u8282", "10_\u7A3F\u4EF6"];
+    return pathParts.findIndex((part) => scenesFolderNames.includes(part));
   }
   /**
    * 解析文件的 YAML frontmatter
@@ -2299,6 +2524,70 @@ SORT file.name
    */
   getApp() {
     return this.app;
+  }
+  /**
+   * 获取章节字数统计
+   * Get chapter word count statistics
+   */
+  getChapterStatistics() {
+    if (!this.currentProject) {
+      return [];
+    }
+    const chapterStats = /* @__PURE__ */ new Map();
+    for (const [filePath, scene] of this.sceneCache) {
+      const folderPath = filePath.substring(0, filePath.lastIndexOf("/"));
+      const chapterName = this.extractChapterName(folderPath);
+      if (chapterName) {
+        const existing = chapterStats.get(chapterName) || { sceneCount: 0, wordCount: 0 };
+        existing.sceneCount += 1;
+        existing.wordCount += scene.wordCount || 0;
+        chapterStats.set(chapterName, existing);
+      }
+    }
+    return Array.from(chapterStats.entries()).map(([chapter, stats]) => ({
+      chapter,
+      sceneCount: stats.sceneCount,
+      wordCount: stats.wordCount
+    })).sort((a, b) => a.chapter.localeCompare(b.chapter));
+  }
+  /**
+   * 从文件夹路径中提取章节名称
+   * Extract chapter name from folder path
+   */
+  extractChapterName(folderPath) {
+    if (!this.currentProject) {
+      return null;
+    }
+    const manuscriptPath = `${this.currentProject.rootPath}/10_\u7A3F\u4EF6`;
+    if (!folderPath.startsWith(manuscriptPath)) {
+      return null;
+    }
+    const relativePath = folderPath.substring(manuscriptPath.length + 1);
+    const pathParts = relativePath.split("/").filter((part) => part.length > 0);
+    if (pathParts.length >= 2) {
+      const volume = pathParts[pathParts.length - 2];
+      const chapter = pathParts[pathParts.length - 1];
+      const volumeName = this.beautifyFolderName(volume);
+      const chapterName = this.beautifyFolderName(chapter);
+      return `${volumeName} / ${chapterName}`;
+    } else if (pathParts.length === 1) {
+      return this.beautifyFolderName(pathParts[0]);
+    }
+    return null;
+  }
+  /**
+   * 美化文件夹名称显示
+   * Beautify folder name for display
+   */
+  beautifyFolderName(folderName) {
+    const withoutPrefix = folderName.replace(/^\d+\s*/, "").trim();
+    if (withoutPrefix.length < 2) {
+      return folderName;
+    }
+    if (/^[a-zA-Z]/.test(withoutPrefix) && /\d/.test(folderName)) {
+      return folderName;
+    }
+    return withoutPrefix || folderName;
   }
 };
 var ProjectService = _ProjectService;
@@ -3328,6 +3617,20 @@ var DashboardRenderer = class extends import_obsidian3.Component {
         if (content.includes("{{PROJECT_STATUS_SWITCHER}}")) {
           content = content.replace(/\{\{PROJECT_STATUS_SWITCHER\}\}/g, "");
         }
+        if (content.includes("{{CHAPTER_STATISTICS}}")) {
+          const chapterStatsHtml = this.generateChapterStatisticsTable();
+          content = content.replace(/\{\{CHAPTER_STATISTICS\}\}/g, "");
+          textNode.textContent = content;
+          const tempDiv = document.createElement("div");
+          tempDiv.innerHTML = chapterStatsHtml;
+          const parent = textNode.parentNode;
+          if (parent) {
+            while (tempDiv.firstChild) {
+              parent.insertBefore(tempDiv.firstChild, textNode.nextSibling);
+            }
+          }
+          return;
+        }
         textNode.textContent = content;
       });
     } catch (error) {
@@ -4317,6 +4620,56 @@ var DashboardRenderer = class extends import_obsidian3.Component {
         background: var(--background-secondary);
         border-radius: 6px;
         margin: 20px 0;
+      `;
+    }
+  }
+  /**
+   * 生成章节统计表格
+   * Generate chapter statistics table
+   */
+  generateChapterStatisticsTable() {
+    try {
+      const chapterStats = this.projectService.getChapterStatistics();
+      if (chapterStats.length === 0) {
+        return `
+          <div style="padding: 20px; text-align: center; color: var(--text-muted); background: var(--background-secondary); border-radius: 6px; margin: 10px 0;">
+            \u6682\u65E0\u7AE0\u8282\u6570\u636E
+          </div>
+        `;
+      }
+      let tableHtml = `
+        <table style="width: 100%; border-collapse: collapse; margin: 10px 0; background: var(--background-primary); border-radius: 6px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+          <thead>
+            <tr style="background: var(--background-secondary); border-bottom: 2px solid var(--background-modifier-border);">
+              <th style="padding: 12px 16px; text-align: left; font-weight: 600; color: var(--text-accent);">\u7AE0\u8282</th>
+              <th style="padding: 12px 16px; text-align: center; font-weight: 600; color: var(--text-accent);">\u573A\u666F\u6570</th>
+              <th style="padding: 12px 16px; text-align: right; font-weight: 600; color: var(--text-accent);">\u5B57\u6570</th>
+            </tr>
+          </thead>
+          <tbody>
+      `;
+      chapterStats.forEach((stat, index) => {
+        const isEven = index % 2 === 0;
+        const backgroundColor = isEven ? "var(--background-primary)" : "var(--background-secondary)";
+        tableHtml += `
+          <tr style="background: ${backgroundColor}; border-bottom: 1px solid var(--background-modifier-border);">
+            <td style="padding: 12px 16px; color: var(--text-normal);">${stat.chapter}</td>
+            <td style="padding: 12px 16px; text-align: center; color: var(--text-muted);">${stat.sceneCount}</td>
+            <td style="padding: 12px 16px; text-align: right; color: var(--text-normal); font-weight: 500;">${stat.wordCount.toLocaleString()}</td>
+          </tr>
+        `;
+      });
+      tableHtml += `
+          </tbody>
+        </table>
+      `;
+      return tableHtml;
+    } catch (error) {
+      console.error("Failed to generate chapter statistics table:", error);
+      return `
+        <div style="padding: 20px; text-align: center; color: var(--text-error); background: var(--background-secondary); border-radius: 6px; margin: 10px 0;">
+          \u7AE0\u8282\u7EDF\u8BA1\u751F\u6210\u5931\u8D25
+        </div>
       `;
     }
   }
@@ -5639,6 +5992,10 @@ var _OutlineView = class extends import_obsidian6.ItemView {
    */
   buildOutlineData() {
     const scenes = this.projectService.getAllScenes();
+    console.log("Building outline data with scenes:", scenes.length);
+    scenes.forEach((scene, index) => {
+      console.log(`Scene ${index}: ${scene.title} - Chapter:${scene.chapterIndex}, Scene:${scene.sceneIndex}, Path:${scene.path}`);
+    });
     scenes.sort((a, b) => {
       if (a.chapterIndex !== b.chapterIndex) {
         return a.chapterIndex - b.chapterIndex;
@@ -5648,46 +6005,29 @@ var _OutlineView = class extends import_obsidian6.ItemView {
     const volumeMap = /* @__PURE__ */ new Map();
     const chapterMap = /* @__PURE__ */ new Map();
     for (const scene of scenes) {
-      const pathParts = scene.path.split("/");
-      let volumeIndex = 1;
-      let volumeName = "\u7B2C\u4E00\u5377";
-      if (pathParts.length >= 3) {
-        const volumePart = pathParts[2];
-        const volumeMatch = volumePart.match(/第(.+)卷/);
-        if (volumeMatch) {
-          volumeName = volumePart;
-          const numMatch = volumeMatch[1].match(/\d+/);
-          if (numMatch) {
-            volumeIndex = parseInt(numMatch[0]);
-          }
-        }
-      }
-      if (!volumeMap.has(volumeIndex)) {
-        volumeMap.set(volumeIndex, {
+      const volumeInfo = this.extractVolumeInfo(scene.path);
+      if (!volumeMap.has(volumeInfo.index)) {
+        volumeMap.set(volumeInfo.index, {
           type: "volume",
-          index: volumeIndex,
-          title: volumeName,
+          index: volumeInfo.index,
+          title: volumeInfo.name,
           chapters: [],
           isExpanded: true
         });
       }
-      const volume = volumeMap.get(volumeIndex);
-      const chapterKey = `${volumeIndex}-${scene.chapterIndex}`;
+      const volume = volumeMap.get(volumeInfo.index);
+      const chapterInfo = this.extractChapterInfo(scene.path, scene.chapterIndex);
+      const chapterKey = `${volumeInfo.index}-${chapterInfo.name}`;
       if (!chapterMap.has(chapterKey)) {
-        let chapterName = `\u7B2C${scene.chapterIndex}\u7AE0`;
-        if (pathParts.length >= 4) {
-          const chapterPart = pathParts[3];
-          if (chapterPart.includes("\u7AE0")) {
-            chapterName = chapterPart;
-          }
-        }
+        const chapterIndexFromName = this.extractChapterIndexFromName(chapterInfo.name);
+        const chapterIndex = chapterIndexFromName > 0 ? chapterIndexFromName : scene.chapterIndex;
         const chapter2 = {
           type: "chapter",
-          index: scene.chapterIndex,
-          title: chapterName,
+          index: chapterIndex,
+          title: chapterInfo.name,
           scenes: [],
           isExpanded: true,
-          volumeIndex
+          volumeIndex: volumeInfo.index
         };
         chapterMap.set(chapterKey, chapter2);
         volume.chapters.push(chapter2);
@@ -5697,7 +6037,7 @@ var _OutlineView = class extends import_obsidian6.ItemView {
         type: "scene",
         data: scene,
         chapterIndex: scene.chapterIndex,
-        volumeIndex
+        volumeIndex: volumeInfo.index
       };
       chapter.scenes.push(sceneNode);
     }
@@ -6159,6 +6499,160 @@ var _OutlineView = class extends import_obsidian6.ItemView {
         errorEl.parentNode.removeChild(errorEl);
       }
     }, 3e3);
+  }
+  /**
+   * 简化的卷信息提取
+   * Simplified volume information extraction
+   */
+  extractVolumeInfo(filePath) {
+    const pathParts = filePath.split("/");
+    const scenesFolderIndex = this.findScenesFolderIndex(pathParts);
+    if (scenesFolderIndex >= 0 && pathParts.length > scenesFolderIndex + 1) {
+      const volumeFolder = pathParts[scenesFolderIndex + 1];
+      if (volumeFolder.endsWith(".md")) {
+        return { index: 1, name: "\u9ED8\u8BA4\u5377" };
+      }
+      const numberMatch = volumeFolder.match(/(\d+)/);
+      if (numberMatch) {
+        const index2 = parseInt(numberMatch[1], 10);
+        return { index: index2, name: volumeFolder };
+      }
+      const index = this.getStringHash(volumeFolder) % 1e3 + 1;
+      return { index, name: volumeFolder };
+    }
+    return { index: 1, name: "\u9ED8\u8BA4\u5377" };
+  }
+  /**
+   * 简化的章节信息提取
+   * Simplified chapter information extraction
+   */
+  extractChapterInfo(filePath, chapterIndex) {
+    const pathParts = filePath.split("/");
+    const scenesFolderIndex = this.findScenesFolderIndex(pathParts);
+    if (scenesFolderIndex >= 0 && pathParts.length > scenesFolderIndex + 2) {
+      const chapterFolder = pathParts[scenesFolderIndex + 2];
+      if (chapterFolder.endsWith(".md")) {
+        return { name: `\u7B2C${chapterIndex}\u7AE0` };
+      }
+      return { name: chapterFolder };
+    }
+    return { name: `\u7B2C${chapterIndex}\u7AE0` };
+  }
+  /**
+   * 解析中文或阿拉伯数字
+   * Parse Chinese or Arabic numbers
+   */
+  parseChineseOrNumber(str) {
+    const arabicMatch = str.match(/\d+/);
+    if (arabicMatch) {
+      return parseInt(arabicMatch[0]);
+    }
+    const chineseNumbers = {
+      "\u4E00": 1,
+      "\u4E8C": 2,
+      "\u4E09": 3,
+      "\u56DB": 4,
+      "\u4E94": 5,
+      "\u516D": 6,
+      "\u4E03": 7,
+      "\u516B": 8,
+      "\u4E5D": 9,
+      "\u5341": 10,
+      "\u58F9": 1,
+      "\u8D30": 2,
+      "\u53C1": 3,
+      "\u8086": 4,
+      "\u4F0D": 5,
+      "\u9646": 6,
+      "\u67D2": 7,
+      "\u634C": 8,
+      "\u7396": 9,
+      "\u62FE": 10
+    };
+    for (const [chinese, number] of Object.entries(chineseNumbers)) {
+      if (str.includes(chinese)) {
+        return number;
+      }
+    }
+    return 0;
+  }
+  /**
+   * 从字符串中提取数字
+   * Extract number from string
+   */
+  extractNumberFromString(str) {
+    const match = str.match(/\d+/);
+    return match ? parseInt(match[0]) : 0;
+  }
+  /**
+   * 获取文件夹索引（基于字母顺序）
+   * Get folder index based on alphabetical order
+   */
+  getFolderIndex(folderName, parentPath) {
+    try {
+      const siblingFolders = this.app.vault.getAllLoadedFiles().filter((file) => {
+        const filePath = file.path;
+        const filePathParts = filePath.split("/");
+        const parentPathParts = parentPath.split("/");
+        return filePathParts.length === parentPathParts.length + 1 && filePath.startsWith(parentPath + "/") && filePath !== parentPath + "/" + folderName;
+      }).map((file) => file.path.split("/").pop()).filter((name) => name).sort();
+      siblingFolders.push(folderName);
+      siblingFolders.sort();
+      const index = siblingFolders.indexOf(folderName);
+      return index >= 0 ? index + 1 : 1;
+    } catch (error) {
+      console.warn("Failed to get folder index:", error);
+      return 1;
+    }
+  }
+  /**
+   * 查找场景文件夹索引
+   * Find scenes folder index
+   */
+  findScenesFolderIndex(pathParts) {
+    const scenesFolderNames = ["scenes", "Scenes", "\u573A\u666F", "\u7AE0\u8282", "10_\u7A3F\u4EF6"];
+    return pathParts.findIndex((part) => scenesFolderNames.includes(part));
+  }
+  /**
+   * 获取字符串哈希值
+   * Get string hash value
+   */
+  getStringHash(str) {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      const char = str.charCodeAt(i);
+      hash = (hash << 5) - hash + char;
+      hash = hash & hash;
+    }
+    return Math.abs(hash);
+  }
+  /**
+   * 从章节名称中提取章节索引
+   * Extract chapter index from chapter name
+   */
+  extractChapterIndexFromName(chapterName) {
+    const patterns = [
+      /第(\d+)章/,
+      // 第1章, 第2章
+      /章(\d+)/,
+      // 章1, 章2
+      /Chapter\s*(\d+)/i,
+      // Chapter 1, Chapter2
+      /Ch\s*(\d+)/i,
+      // Ch 1, Ch2
+      /^(\d+)/
+      // 纯数字开头
+    ];
+    for (const pattern of patterns) {
+      const match = chapterName.match(pattern);
+      if (match) {
+        const index = parseInt(match[1], 10);
+        if (!isNaN(index) && index > 0) {
+          return index;
+        }
+      }
+    }
+    return 0;
   }
   /**
    * 清理资源
@@ -6948,17 +7442,10 @@ var _CorkboardView = class extends import_obsidian8.ItemView {
     const chapterMap = /* @__PURE__ */ new Map();
     for (const scene of scenes) {
       if (!chapterMap.has(scene.chapterIndex)) {
-        const pathParts = scene.path.split("/");
-        let chapterName = `\u7B2C${scene.chapterIndex}\u7AE0`;
-        if (pathParts.length >= 4) {
-          const chapterPart = pathParts[3];
-          if (chapterPart.includes("\u7AE0")) {
-            chapterName = chapterPart;
-          }
-        }
+        const chapterInfo = this.extractChapterInfo(scene.path, scene.chapterIndex);
         chapterMap.set(scene.chapterIndex, {
           index: scene.chapterIndex,
-          title: chapterName,
+          title: chapterInfo.name,
           scenes: []
         });
       }
@@ -7372,6 +7859,41 @@ var _CorkboardView = class extends import_obsidian8.ItemView {
         errorEl.parentNode.removeChild(errorEl);
       }
     }, 3e3);
+  }
+  /**
+   * 智能提取章节信息
+   * Intelligently extract chapter information
+   */
+  extractChapterInfo(filePath, chapterIndex) {
+    const pathParts = filePath.split("/");
+    const scenesFolder = "10_\u7A3F\u4EF6";
+    const scenesFolderIndex = pathParts.findIndex((part) => part === scenesFolder);
+    for (let i = scenesFolderIndex + 1; i < pathParts.length - 1; i++) {
+      const folderName = pathParts[i];
+      const chapterPatterns = [
+        /章/,
+        /chapter/i,
+        /ch\d+/i,
+        /第.*章/
+      ];
+      const hasChapterKeyword = chapterPatterns.some((pattern) => pattern.test(folderName));
+      if (hasChapterKeyword) {
+        return { name: folderName };
+      }
+      const numberInFolder = this.extractNumberFromString(folderName);
+      if (numberInFolder === chapterIndex) {
+        return { name: folderName };
+      }
+    }
+    return { name: `\u7B2C${chapterIndex}\u7AE0` };
+  }
+  /**
+   * 从字符串中提取数字
+   * Extract number from string
+   */
+  extractNumberFromString(str) {
+    const match = str.match(/\d+/);
+    return match ? parseInt(match[0]) : 0;
   }
   /**
    * 清理资源

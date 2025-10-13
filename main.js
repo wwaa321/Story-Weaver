@@ -27,7 +27,7 @@ __export(main_exports, {
   default: () => StoryWeaverPlugin
 });
 module.exports = __toCommonJS(main_exports);
-var import_obsidian11 = require("obsidian");
+var import_obsidian13 = require("obsidian");
 
 // src/services/ProjectService.ts
 var import_obsidian = require("obsidian");
@@ -8593,6 +8593,483 @@ var StoryWeaverSettingsTab = class extends import_obsidian10.PluginSettingTab {
   }
 };
 
+// src/views/QuickCreatePanel.ts
+var import_obsidian12 = require("obsidian");
+
+// src/modals/QuickCreateModal.ts
+var import_obsidian11 = require("obsidian");
+var QuickCreateModal = class extends import_obsidian11.Modal {
+  constructor(app, projectService, createType) {
+    super(app);
+    /** 选中的项目路径 */
+    this.selectedProjectPath = "";
+    /** 选中的卷名称 */
+    this.selectedVolume = "";
+    /** 选中的章节名称 */
+    this.selectedChapter = "";
+    /** 笔记名称 */
+    this.noteName = "";
+    /** 可用项目列表 */
+    this.availableProjects = [];
+    /** 可用卷列表 */
+    this.availableVolumes = [];
+    /** 可用章节列表 */
+    this.availableChapters = [];
+    this.projectService = projectService;
+    this.createType = createType;
+    this.setTitle(this.getModalTitle());
+  }
+  /**
+   * 获取模态框标题
+   */
+  getModalTitle() {
+    const typeMap = {
+      scene: "\u521B\u5EFA\u573A\u666F",
+      character: "\u521B\u5EFA\u89D2\u8272",
+      location: "\u521B\u5EFA\u5730\u70B9"
+    };
+    return typeMap[this.createType];
+  }
+  /**
+   * 模态框打开时调用
+   */
+  async onOpen() {
+    const { contentEl } = this;
+    contentEl.empty();
+    await this.scanAvailableProjects();
+    this.renderForm(contentEl);
+  }
+  /**
+   * 扫描可用的项目
+   */
+  async scanAvailableProjects() {
+    this.availableProjects = [];
+    const folders = this.app.vault.getAllLoadedFiles().filter(
+      (file) => file instanceof import_obsidian11.TFolder
+    );
+    for (const folder of folders) {
+      const projectFile = this.app.vault.getAbstractFileByPath(`${folder.path}/_project.md`);
+      if (projectFile instanceof import_obsidian11.TFile) {
+        this.availableProjects.push(folder.path);
+      }
+    }
+    if (this.projectService.currentProject) {
+      this.selectedProjectPath = this.projectService.currentProject.rootPath;
+    } else if (this.availableProjects.length > 0) {
+      this.selectedProjectPath = this.availableProjects[0];
+    }
+    if (this.selectedProjectPath) {
+      await this.scanVolumeAndChapters();
+    }
+  }
+  /**
+   * 扫描卷和章节文件夹
+   */
+  async scanVolumeAndChapters() {
+    this.availableVolumes = [];
+    this.availableChapters = [];
+    if (!this.selectedProjectPath)
+      return;
+    const scenesPath = `${this.selectedProjectPath}/10_\u7A3F\u4EF6`;
+    const scenesFolder = this.app.vault.getAbstractFileByPath(scenesPath);
+    if (!(scenesFolder instanceof import_obsidian11.TFolder))
+      return;
+    for (const child of scenesFolder.children) {
+      if (child instanceof import_obsidian11.TFolder) {
+        this.availableVolumes.push(child.name);
+      }
+    }
+    if (this.availableVolumes.length > 0) {
+      this.selectedVolume = this.availableVolumes[0];
+      await this.scanChaptersForVolume(this.selectedVolume);
+    }
+  }
+  /**
+   * 扫描指定卷下的章节
+   */
+  async scanChaptersForVolume(volumeName) {
+    this.availableChapters = [];
+    if (!this.selectedProjectPath || !volumeName)
+      return;
+    const volumePath = `${this.selectedProjectPath}/10_\u7A3F\u4EF6/${volumeName}`;
+    const volumeFolder = this.app.vault.getAbstractFileByPath(volumePath);
+    if (!(volumeFolder instanceof import_obsidian11.TFolder))
+      return;
+    for (const child of volumeFolder.children) {
+      if (child instanceof import_obsidian11.TFolder) {
+        this.availableChapters.push(child.name);
+      }
+    }
+    if (this.availableChapters.length > 0) {
+      this.selectedChapter = this.availableChapters[0];
+    }
+  }
+  /**
+   * 渲染表单内容
+   */
+  renderForm(container) {
+    new import_obsidian11.Setting(container).setName("\u9009\u62E9\u9879\u76EE").setDesc("\u9009\u62E9\u8981\u521B\u5EFA\u7B14\u8BB0\u7684\u9879\u76EE").addDropdown((dropdown) => {
+      dropdown.addOptions(this.availableProjects.reduce((acc, path) => {
+        const name = path.split("/").pop() || path;
+        acc[path] = name;
+        return acc;
+      }, {})).setValue(this.selectedProjectPath).onChange(async (value) => {
+        this.selectedProjectPath = value;
+        await this.scanVolumeAndChapters();
+        this.refreshForm();
+      });
+    });
+    if (this.createType === "scene") {
+      new import_obsidian11.Setting(container).setName("\u9009\u62E9\u5377").setDesc("\u9009\u62E9\u573A\u666F\u6240\u5C5E\u7684\u5377").addDropdown((dropdown) => {
+        dropdown.addOptions(this.availableVolumes.reduce((acc, volume) => {
+          acc[volume] = this.beautifyFolderName(volume);
+          return acc;
+        }, {})).setValue(this.selectedVolume).onChange(async (value) => {
+          this.selectedVolume = value;
+          await this.scanChaptersForVolume(value);
+          this.refreshForm();
+        });
+      });
+      new import_obsidian11.Setting(container).setName("\u9009\u62E9\u7AE0\u8282").setDesc("\u9009\u62E9\u573A\u666F\u6240\u5C5E\u7684\u7AE0\u8282").addDropdown((dropdown) => {
+        dropdown.addOptions(this.availableChapters.reduce((acc, chapter) => {
+          acc[chapter] = this.beautifyFolderName(chapter);
+          return acc;
+        }, {})).setValue(this.selectedChapter).onChange((value) => {
+          this.selectedChapter = value;
+        });
+      });
+    }
+    new import_obsidian11.Setting(container).setName("\u7B14\u8BB0\u540D\u79F0").setDesc("\u8F93\u5165\u7B14\u8BB0\u7684\u6587\u4EF6\u540D\uFF08\u4E0D\u9700\u8981\u6269\u5C55\u540D\uFF09").addText((text) => {
+      text.setPlaceholder("\u8BF7\u8F93\u5165\u7B14\u8BB0\u540D\u79F0...").setValue(this.noteName).onChange((value) => {
+        this.noteName = value.trim();
+      });
+    });
+    const buttonContainer = container.createDiv("modal-button-container");
+    buttonContainer.style.cssText = `
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      margin-top: 20px;
+      padding-top: 20px;
+      border-top: 1px solid var(--background-modifier-border);
+    `;
+    const cancelButton = buttonContainer.createEl("button", { text: "\u53D6\u6D88" });
+    cancelButton.addEventListener("click", () => {
+      this.close();
+    });
+    const createButton = buttonContainer.createEl("button", {
+      text: "\u521B\u5EFA",
+      cls: "mod-cta"
+    });
+    createButton.addEventListener("click", async () => {
+      await this.createNote();
+    });
+    this.updateCreateButtonState(createButton);
+    container.addEventListener("input", () => {
+      this.updateCreateButtonState(createButton);
+    });
+  }
+  /**
+   * 刷新表单（重新渲染）
+   */
+  refreshForm() {
+    const { contentEl } = this;
+    contentEl.empty();
+    this.renderForm(contentEl);
+  }
+  /**
+   * 更新创建按钮状态
+   */
+  updateCreateButtonState(button) {
+    const isValid = this.isFormValid();
+    button.disabled = !isValid;
+    if (isValid) {
+      button.style.opacity = "1";
+      button.style.cursor = "pointer";
+    } else {
+      button.style.opacity = "0.6";
+      button.style.cursor = "not-allowed";
+    }
+  }
+  /**
+   * 检查表单是否有效
+   */
+  isFormValid() {
+    if (!this.selectedProjectPath || !this.noteName) {
+      return false;
+    }
+    if (this.createType === "scene") {
+      if (!this.selectedVolume || !this.selectedChapter) {
+        return false;
+      }
+    }
+    return true;
+  }
+  /**
+   * 创建笔记
+   */
+  async createNote() {
+    try {
+      if (!this.isFormValid()) {
+        throw new Error("\u8868\u5355\u6570\u636E\u4E0D\u5B8C\u6574");
+      }
+      const filePath = this.buildFilePath();
+      const existingFile = this.app.vault.getAbstractFileByPath(filePath);
+      if (existingFile) {
+        throw new Error(`\u6587\u4EF6\u5DF2\u5B58\u5728: ${filePath}`);
+      }
+      const file = await this.app.vault.create(filePath, "");
+      const templateService = new TemplateService(this.app);
+      const result = await templateService.applyTemplateToNewFile(file);
+      if (result.success) {
+        await this.app.workspace.getLeaf(false).openFile(file);
+        this.close();
+      } else {
+        await this.app.vault.delete(file);
+        throw new Error(result.error || "\u521B\u5EFA\u6587\u4EF6\u5931\u8D25");
+      }
+    } catch (error) {
+      console.error("\u521B\u5EFA\u7B14\u8BB0\u5931\u8D25:", error);
+      const errorEl = this.contentEl.querySelector(".error-message");
+      if (errorEl)
+        errorEl.remove();
+      const errorMessage = this.contentEl.createDiv("error-message");
+      errorMessage.style.cssText = `
+        background: var(--background-modifier-error);
+        border: 1px solid var(--text-error);
+        border-radius: 6px;
+        padding: 12px;
+        margin-top: 16px;
+        color: var(--text-error);
+        font-size: 13px;
+      `;
+      errorMessage.createEl("p", { text: `\u521B\u5EFA\u5931\u8D25: ${error.message}` });
+    }
+  }
+  /**
+   * 构建文件路径
+   */
+  buildFilePath() {
+    if (!this.selectedProjectPath) {
+      throw new Error("\u672A\u9009\u62E9\u9879\u76EE");
+    }
+    const folderStructure = {
+      scene: "10_\u7A3F\u4EF6",
+      character: "20_\u89D2\u8272",
+      location: "30_\u5730\u70B9"
+    };
+    const baseFolder = folderStructure[this.createType];
+    let filePath = `${this.selectedProjectPath}/${baseFolder}`;
+    if (this.createType === "scene") {
+      if (!this.selectedVolume || !this.selectedChapter) {
+        throw new Error("\u573A\u666F\u521B\u5EFA\u9700\u8981\u9009\u62E9\u5377\u548C\u7AE0\u8282");
+      }
+      filePath += `/${this.selectedVolume}/${this.selectedChapter}`;
+    }
+    filePath += `/${this.noteName}.md`;
+    return filePath;
+  }
+  /**
+   * 美化文件夹名称（移除数字前缀）
+   */
+  beautifyFolderName(name) {
+    return name.replace(/^\d+[_-]/, "");
+  }
+  /**
+   * 模态框关闭时调用
+   */
+  onClose() {
+    const { contentEl } = this;
+    contentEl.empty();
+  }
+};
+
+// src/views/QuickCreatePanel.ts
+var QUICK_CREATE_PANEL_VIEW_TYPE = "story-weaver-quick-create";
+var _QuickCreatePanel = class extends import_obsidian12.ItemView {
+  constructor(leaf, projectService) {
+    super(leaf);
+    this.projectService = projectService;
+  }
+  /**
+   * 获取视图类型
+   */
+  getViewType() {
+    return _QuickCreatePanel.VIEW_TYPE;
+  }
+  /**
+   * 获取显示名称
+   */
+  getDisplayText() {
+    return "\u5FEB\u901F\u521B\u5EFA";
+  }
+  /**
+   * 获取图标
+   */
+  getIcon() {
+    return "plus-circle";
+  }
+  /**
+   * 视图加载时调用
+   */
+  async onOpen() {
+    await this.render();
+  }
+  /**
+   * 视图关闭时调用
+   */
+  async onClose() {
+    this.containerEl.empty();
+  }
+  /**
+   * 渲染面板内容
+   */
+  async render() {
+    const container = this.containerEl.children[1];
+    container.empty();
+    container.addClass("quick-create-panel");
+    const header = container.createDiv("quick-create-header");
+    header.createEl("h3", { text: "\u5FEB\u901F\u521B\u5EFA" });
+    const buttonGroup = container.createDiv("quick-create-button-group");
+    const sceneButton = buttonGroup.createEl("button", {
+      text: "\u521B\u5EFA\u573A\u666F",
+      cls: "quick-create-button scene-button"
+    });
+    sceneButton.addEventListener("click", () => {
+      this.openCreateModal("scene");
+    });
+    const characterButton = buttonGroup.createEl("button", {
+      text: "\u521B\u5EFA\u89D2\u8272",
+      cls: "quick-create-button character-button"
+    });
+    characterButton.addEventListener("click", () => {
+      this.openCreateModal("character");
+    });
+    const locationButton = buttonGroup.createEl("button", {
+      text: "\u521B\u5EFA\u5730\u70B9",
+      cls: "quick-create-button location-button"
+    });
+    locationButton.addEventListener("click", () => {
+      this.openCreateModal("location");
+    });
+    this.applyStyles(container);
+  }
+  /**
+   * 打开创建模态框
+   */
+  openCreateModal(type) {
+    if (!this.projectService.currentProject) {
+      this.showNoProjectMessage();
+      return;
+    }
+    const modal = new QuickCreateModal(
+      this.app,
+      this.projectService,
+      type
+    );
+    modal.open();
+  }
+  /**
+   * 显示未加载项目提示
+   */
+  showNoProjectMessage() {
+    const container = this.containerEl.children[1];
+    const existingMessage = container.querySelector(".no-project-message");
+    if (existingMessage) {
+      existingMessage.remove();
+    }
+    const message = container.createDiv("no-project-message");
+    message.createEl("p", {
+      text: "\u8BF7\u5148\u52A0\u8F7D\u6216\u521B\u5EFA\u4E00\u4E2A\u5199\u4F5C\u9879\u76EE",
+      cls: "no-project-text"
+    });
+    setTimeout(() => {
+      message.remove();
+    }, 3e3);
+  }
+  /**
+   * 应用样式
+   */
+  applyStyles(container) {
+    container.style.cssText = `
+      padding: 16px;
+      background: var(--background-primary);
+      height: 100%;
+      overflow-y: auto;
+    `;
+    const header = container.querySelector(".quick-create-header");
+    if (header) {
+      header.style.cssText = `
+        margin-bottom: 20px;
+        border-bottom: 1px solid var(--background-modifier-border);
+        padding-bottom: 12px;
+      `;
+      const h3 = header.querySelector("h3");
+      if (h3) {
+        h3.style.cssText = `
+          margin: 0;
+          font-size: 16px;
+          font-weight: 600;
+          color: var(--text-normal);
+        `;
+      }
+    }
+    const buttonGroup = container.querySelector(".quick-create-button-group");
+    if (buttonGroup) {
+      buttonGroup.style.cssText = `
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      `;
+    }
+    const buttons = container.querySelectorAll(".quick-create-button");
+    buttons.forEach((button) => {
+      button.style.cssText = `
+        padding: 12px 16px;
+        border: 1px solid var(--background-modifier-border);
+        background: var(--background-secondary);
+        color: var(--text-normal);
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 500;
+        transition: all 0.2s ease;
+        text-align: left;
+        width: 100%;
+      `;
+      button.addEventListener("mouseenter", () => {
+        button.style.background = "var(--interactive-hover)";
+        button.style.borderColor = "var(--interactive-accent)";
+      });
+      button.addEventListener("mouseleave", () => {
+        button.style.background = "var(--background-secondary)";
+        button.style.borderColor = "var(--background-modifier-border)";
+      });
+    });
+    const message = container.querySelector(".no-project-message");
+    if (message) {
+      message.style.cssText = `
+        background: var(--background-modifier-error);
+        border: 1px solid var(--text-error);
+        border-radius: 6px;
+        padding: 12px;
+        margin-top: 16px;
+        color: var(--text-error);
+        font-size: 13px;
+      `;
+    }
+  }
+  /**
+   * 刷新面板
+   */
+  refresh() {
+    this.render();
+  }
+};
+var QuickCreatePanel = _QuickCreatePanel;
+/** 视图类型 */
+QuickCreatePanel.VIEW_TYPE = QUICK_CREATE_PANEL_VIEW_TYPE;
+
 // main.ts
 var DEFAULT_SETTINGS = {
   defaultProjectPath: "",
@@ -8624,7 +9101,7 @@ var DEFAULT_SETTINGS = {
     updateThreshold: 10
   }
 };
-var StoryWeaverPlugin = class extends import_obsidian11.Plugin {
+var StoryWeaverPlugin = class extends import_obsidian13.Plugin {
   constructor() {
     super(...arguments);
     /** 项目切换防抖定时器 */
@@ -8648,6 +9125,7 @@ var StoryWeaverPlugin = class extends import_obsidian11.Plugin {
     this.immersiveWritingService = new ImmersiveWritingService(this.app, this.projectService);
     this.registerCommands();
     this.registerViews();
+    this.registerRibbonIcons();
     this.addSettingTab(new StoryWeaverSettingsTab(this.app, this));
     this.registerEventListeners();
     this.registerDashboardProcessor();
@@ -8755,6 +9233,13 @@ var StoryWeaverPlugin = class extends import_obsidian11.Plugin {
         this.createDefaultTemplates();
       }
     });
+    this.addCommand({
+      id: "open-quick-create-panel",
+      name: "\u7EC7\u6587\u8005\uFF1A\u6253\u5F00\u5FEB\u901F\u521B\u5EFA\u9762\u677F",
+      callback: () => {
+        this.openQuickCreatePanel();
+      }
+    });
   }
   /**
    * 注册自定义视图
@@ -8773,7 +9258,21 @@ var StoryWeaverPlugin = class extends import_obsidian11.Plugin {
       TimelineView.VIEW_TYPE,
       (leaf) => new TimelineView(leaf, this.projectService)
     );
-    console.log("Scene Info Panel, Outline View, and Timeline View registered");
+    this.registerView(
+      QuickCreatePanel.VIEW_TYPE,
+      (leaf) => new QuickCreatePanel(leaf, this.projectService)
+    );
+    console.log("Scene Info Panel, Outline View, Timeline View, and Quick Create Panel registered");
+  }
+  /**
+   * 注册左侧工具栏按钮
+   * Register ribbon icons
+   */
+  registerRibbonIcons() {
+    this.addRibbonIcon("plus-circle", "\u5FEB\u901F\u521B\u5EFA\u9762\u677F", (evt) => {
+      this.openQuickCreatePanel();
+    });
+    console.log("Ribbon icons registered");
   }
   /**
    * 注册 Markdown 后处理器
@@ -8937,6 +9436,29 @@ var StoryWeaverPlugin = class extends import_obsidian11.Plugin {
     }
   }
   /**
+   * 打开快速创建面板
+   * Open quick create panel
+   */
+  async openQuickCreatePanel() {
+    const { workspace } = this.app;
+    let leaf = null;
+    const leaves = workspace.getLeavesOfType(QuickCreatePanel.VIEW_TYPE);
+    if (leaves.length > 0) {
+      leaf = leaves[0];
+    } else {
+      leaf = workspace.getLeftLeaf(false);
+      if (leaf) {
+        await leaf.setViewState({
+          type: QuickCreatePanel.VIEW_TYPE,
+          active: true
+        });
+      }
+    }
+    if (leaf) {
+      workspace.revealLeaf(leaf);
+    }
+  }
+  /**
    * 文件创建事件处理
    * Handle file creation event
    */
@@ -9005,7 +9527,7 @@ var StoryWeaverPlugin = class extends import_obsidian11.Plugin {
    * Handle file menu event (context menu)
    */
   onFileMenu(menu, file) {
-    if (!(file instanceof import_obsidian11.TFolder)) {
+    if (!(file instanceof import_obsidian13.TFolder)) {
       return;
     }
     if (!this.projectService.currentProject) {

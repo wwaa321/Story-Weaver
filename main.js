@@ -467,6 +467,249 @@ ${Object.entries(defaultMetadata).map(([key, value]) => `${key}: ${JSON.stringif
   }
 };
 
+// src/services/WordCountService.ts
+var WordCountService = class {
+  constructor(app) {
+    /** 字数统计缓存 */
+    this.cache = /* @__PURE__ */ new Map();
+    /** 防抖定时器 */
+    this.debounceTimers = /* @__PURE__ */ new Map();
+    /** 节流定时器 */
+    this.throttleTimer = null;
+    /** 最大缓存大小 */
+    this.MAX_CACHE_SIZE = 100;
+    /** 防抖延迟（毫秒） */
+    this.DEBOUNCE_DELAY = 500;
+    /** 节流间隔（毫秒） */
+    this.THROTTLE_INTERVAL = 5e3;
+    this.app = app;
+  }
+  /**
+   * 设置项目总字数更新回调
+   * Set callback for project total word count update
+   */
+  setProjectTotalUpdateCallback(callback) {
+    this.onProjectTotalUpdate = callback;
+  }
+  /**
+   * 计算文本字数（与 Obsidian 一致）
+   * Calculate word count from text (consistent with Obsidian)
+   */
+  calculateWordCount(content) {
+    if (!content || content.trim().length === 0) {
+      return 0;
+    }
+    const text = content.replace(/^---[\s\S]*?---\n?/, "");
+    let wordCount = 0;
+    let i = 0;
+    const len = text.length;
+    while (i < len) {
+      const char = text[i];
+      const code = char.charCodeAt(0);
+      if (this.isCJKCharacter(code)) {
+        wordCount++;
+        i++;
+      } else if (this.isEnglishLetter(code)) {
+        let wordEnd = i;
+        while (wordEnd < len && this.isEnglishLetter(text.charCodeAt(wordEnd))) {
+          wordEnd++;
+        }
+        wordCount++;
+        i = wordEnd;
+      } else if (this.isDigit(code)) {
+        let numEnd = i;
+        while (numEnd < len && this.isDigit(text.charCodeAt(numEnd))) {
+          numEnd++;
+        }
+        wordCount++;
+        i = numEnd;
+      } else {
+        if (!this.isWhitespace(code)) {
+          wordCount++;
+        }
+        i++;
+      }
+    }
+    return wordCount;
+  }
+  /**
+   * 防抖更新场景字数
+   * Debounce scene word count update
+   */
+  debounceSceneUpdate(scenePath, content, callback) {
+    const existingTimer = this.debounceTimers.get(scenePath);
+    if (existingTimer) {
+      clearTimeout(existingTimer);
+    }
+    const timer = setTimeout(async () => {
+      try {
+        const wordCount = this.calculateWordCount(content);
+        this.setCache(scenePath, wordCount, content);
+        await callback(wordCount);
+        this.throttleProjectUpdate();
+        console.log(`\u2705 Word count updated for ${scenePath}: ${wordCount}`);
+      } catch (error) {
+        console.error(`\u274C Failed to update word count for ${scenePath}:`, error);
+      } finally {
+        this.debounceTimers.delete(scenePath);
+      }
+    }, this.DEBOUNCE_DELAY);
+    this.debounceTimers.set(scenePath, timer);
+  }
+  /**
+   * 节流更新项目总字数
+   * Throttle project total word count update
+   */
+  throttleProjectUpdate() {
+    if (this.throttleTimer) {
+      return;
+    }
+    this.throttleTimer = setTimeout(async () => {
+      try {
+        if (this.onProjectTotalUpdate) {
+          await this.onProjectTotalUpdate();
+        }
+      } catch (error) {
+        console.error("\u274C Failed to update project total word count:", error);
+      } finally {
+        this.throttleTimer = null;
+      }
+    }, this.THROTTLE_INTERVAL);
+  }
+  /**
+   * 立即刷新所有更新（用于保存时）
+   * Flush all pending updates immediately (for save)
+   */
+  async flushUpdates() {
+    for (const timer of this.debounceTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.debounceTimers.clear();
+    if (this.throttleTimer) {
+      clearTimeout(this.throttleTimer);
+      this.throttleTimer = null;
+    }
+    if (this.onProjectTotalUpdate) {
+      await this.onProjectTotalUpdate();
+    }
+  }
+  /**
+   * 获取缓存的字数
+   * Get cached word count
+   */
+  getCachedWordCount(scenePath) {
+    const cached = this.cache.get(scenePath);
+    return cached ? cached.wordCount : null;
+  }
+  /**
+   * 设置缓存
+   * Set cache
+   */
+  setCache(scenePath, wordCount, content) {
+    if (this.cache.size >= this.MAX_CACHE_SIZE && !this.cache.has(scenePath)) {
+      const firstKey = this.cache.keys().next().value;
+      if (firstKey) {
+        this.cache.delete(firstKey);
+      }
+    }
+    this.cache.set(scenePath, {
+      scenePath,
+      wordCount,
+      contentHash: this.calculateContentHash(content),
+      lastUpdated: new Date()
+    });
+  }
+  /**
+   * 计算内容哈希
+   * Calculate content hash
+   */
+  calculateContentHash(content) {
+    let hash = 0;
+    for (let i = 0; i < content.length; i++) {
+      const char = content.charCodeAt(i);
+      hash = (hash << 5) - hash + char;
+      hash = hash & hash;
+    }
+    return hash.toString(16);
+  }
+  /**
+   * 检查内容是否变化
+   * Check if content has changed
+   */
+  hasContentChanged(scenePath, newContent) {
+    const cached = this.cache.get(scenePath);
+    if (!cached) {
+      return true;
+    }
+    const newHash = this.calculateContentHash(newContent);
+    return cached.contentHash !== newHash;
+  }
+  /**
+   * 清除缓存
+   * Clear cache
+   */
+  clearCache() {
+    this.cache.clear();
+  }
+  /**
+   * 清除指定场景的缓存
+   * Clear cache for specific scene
+   */
+  clearSceneCache(scenePath) {
+    this.cache.delete(scenePath);
+  }
+  /**
+   * 获取缓存大小
+   * Get cache size
+   */
+  getCacheSize() {
+    return this.cache.size;
+  }
+  /**
+   * 判断是否为 CJK 字符
+   * Check if character is CJK
+   */
+  isCJKCharacter(code) {
+    return code >= 19968 && code <= 40959 || code >= 13312 && code <= 19903 || code >= 131072 && code <= 183983 || code >= 63744 && code <= 64255;
+  }
+  /**
+   * 判断是否为英文字母
+   * Check if character is English letter
+   */
+  isEnglishLetter(code) {
+    return code >= 65 && code <= 90 || code >= 97 && code <= 122;
+  }
+  /**
+   * 判断是否为数字
+   * Check if character is digit
+   */
+  isDigit(code) {
+    return code >= 48 && code <= 57;
+  }
+  /**
+   * 判断是否为空白字符
+   * Check if character is whitespace
+   */
+  isWhitespace(code) {
+    return code === 32 || code === 9 || code === 10 || code === 13;
+  }
+  /**
+   * 销毁服务
+   * Destroy service
+   */
+  destroy() {
+    for (const timer of this.debounceTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.debounceTimers.clear();
+    if (this.throttleTimer) {
+      clearTimeout(this.throttleTimer);
+      this.throttleTimer = null;
+    }
+    this.cache.clear();
+  }
+};
+
 // src/services/ProjectService.ts
 var _ProjectService = class {
   /**
@@ -500,6 +743,10 @@ var _ProjectService = class {
     this.dailyWordSnapshots = /* @__PURE__ */ new Map();
     this.app = app;
     this.metadataManager = new MetadataManager(app);
+    this.wordCountService = new WordCountService(app);
+    this.wordCountService.setProjectTotalUpdateCallback(async () => {
+      await this.updateProjectCurrentWordCount();
+    });
   }
   /**
    * 获取 ProjectService 单例实例
@@ -1790,6 +2037,10 @@ SORT file.name
     this.pendingWordCountUpdates.clear();
     this.lastSavedWordCounts.clear();
     await this.saveDailyWordSnapshots();
+    if (this.wordCountService) {
+      await this.wordCountService.flushUpdates();
+      this.wordCountService.destroy();
+    }
     this.sceneCache.clear();
     this.characterCache.clear();
     this.locationCache.clear();
@@ -2409,46 +2660,18 @@ SORT file.name
     }
   }
   /**
-   * 使用 Obsidian 的方式计算字数
-   * Calculate word count using Obsidian's method
+   * 使用 WordCountService 计算字数
+   * Calculate word count using WordCountService
    */
   calculateWordCount(content, filePath) {
-    try {
-      if (filePath) {
-        const activeView = this.app.workspace.getActiveViewOfType(import_obsidian.MarkdownView);
-        if (activeView && activeView.file && activeView.file.path === filePath) {
-          const editor = activeView.editor;
-          if (editor) {
-            const editorContent = editor.getValue();
-            return this.calculateWordCountFromText(editorContent);
-          }
-        }
-      }
-    } catch (error) {
-      console.debug("Failed to get editor word count, falling back to text calculation");
-    }
-    return this.calculateWordCountFromText(content);
+    return this.wordCountService.calculateWordCount(content);
   }
   /**
-   * 从文本计算字数（改进版本）
-   * Calculate word count from text (improved version)
+   * 获取字数统计服务实例
+   * Get word count service instance
    */
-  calculateWordCountFromText(content) {
-    const withoutFrontmatter = content.replace(/^---[\s\S]*?---\n?/, "");
-    const withoutCodeBlocks = withoutFrontmatter.replace(/```[\s\S]*?```/g, "");
-    const withoutInlineCode = withoutCodeBlocks.replace(/`[^`]*`/g, "");
-    const withoutLinks = withoutInlineCode.replace(/\[([^\]]*)\]\([^)]*\)/g, "$1");
-    const withoutImages = withoutLinks.replace(/!\[([^\]]*)\]\([^)]*\)/g, "");
-    const withoutMarkdown = withoutImages.replace(/^#{1,6}\s+/gm, "").replace(/\*\*([^*]+)\*\*/g, "$1").replace(/\*([^*]+)\*/g, "$1").replace(/~~([^~]+)~~/g, "$1").replace(/==([^=]+)==/g, "$1").replace(/^\s*[-*+]\s+/gm, "").replace(/^\s*\d+\.\s+/gm, "").replace(/^\s*>\s+/gm, "").replace(/---+/g, "").replace(/\|/g, " ");
-    const cleanText = withoutMarkdown.replace(/\s+/g, " ").trim();
-    if (!cleanText) {
-      return 0;
-    }
-    const chineseChars = cleanText.match(/[\u4e00-\u9fff]/g);
-    const englishWords = cleanText.match(/[a-zA-Z]+/g);
-    const chineseCount = chineseChars ? chineseChars.length : 0;
-    const englishCount = englishWords ? englishWords.length : 0;
-    return chineseCount + englishCount;
+  getWordCountService() {
+    return this.wordCountService;
   }
   /**
    * 从缓存中移除文件
@@ -2969,6 +3192,15 @@ var ActivationService = class {
   constructor() {
     this.supabaseUrl = "https://kbfwajzlaswbqesgxedu.supabase.co";
     this.supabaseKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtiZndhanpsYXN3YnFlc2d4ZWR1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDcwMjU5MjYsImV4cCI6MjA2MjYwMTkyNn0.RyoKxCOwAzGnwD2B1mjm2s9IOb1btKcrN94jf2RtPbQ";
+    /** 服务配置 */
+    this.config = {
+      timeout: 15e3,
+      maxRetries: 3,
+      retryDelay: 1e3,
+      codePattern: /^[A-Z0-9][A-Z0-9-]{3,}$/i
+    };
+    /** 激活请求锁，防止并发激活 */
+    this.activationLock = false;
   }
   /**
    * 验证激活码
@@ -2977,13 +3209,27 @@ var ActivationService = class {
   async verifyActivationCode(code) {
     try {
       console.log(`\u{1F511} Verifying activation code: ${code}`);
-      if (!code || code.trim().length === 0) {
+      if (this.activationLock) {
+        return {
+          success: false,
+          message: "\u6B63\u5728\u5904\u7406\u4E2D\uFF0C\u8BF7\u7A0D\u5019..."
+        };
+      }
+      this.activationLock = true;
+      const trimmedCode = code.trim();
+      if (!trimmedCode) {
         return {
           success: false,
           message: "\u8BF7\u8F93\u5165\u6FC0\u6D3B\u7801"
         };
       }
-      const response = await this.queryActivationCode(code.trim());
+      if (!this.validateCodeFormat(trimmedCode)) {
+        return {
+          success: false,
+          message: "\u6FC0\u6D3B\u7801\u683C\u5F0F\u4E0D\u6B63\u786E\uFF0C\u8BF7\u68C0\u67E5\u540E\u91CD\u8BD5"
+        };
+      }
+      const response = await this.queryActivationCodeWithRetry(trimmedCode);
       if (!response.success) {
         return {
           success: false,
@@ -2997,11 +3243,11 @@ var ActivationService = class {
           message: "\u6B64\u6FC0\u6D3B\u7801\u5DF2\u88AB\u4F7F\u7528"
         };
       }
-      const updateResult = await this.markCodeAsUsed(codeData.id);
+      const updateResult = await this.markCodeAsUsedWithRetry(codeData.id);
       if (!updateResult.success) {
         return {
           success: false,
-          message: "\u6FC0\u6D3B\u5931\u8D25\uFF0C\u8BF7\u7A0D\u540E\u91CD\u8BD5"
+          message: updateResult.message || "\u6FC0\u6D3B\u5931\u8D25\uFF0C\u8BF7\u7A0D\u540E\u91CD\u8BD5"
         };
       }
       console.log(`\u2705 Activation code verified successfully: ${code}`);
@@ -3014,9 +3260,67 @@ var ActivationService = class {
       console.error("\u274C Activation verification failed:", error);
       return {
         success: false,
-        message: "\u7F51\u7EDC\u8FDE\u63A5\u5931\u8D25\uFF0C\u8BF7\u68C0\u67E5\u7F51\u7EDC\u540E\u91CD\u8BD5"
+        message: this.getErrorMessage(error)
       };
+    } finally {
+      this.activationLock = false;
     }
+  }
+  /**
+   * 验证激活码格式
+   * Validate activation code format
+   */
+  validateCodeFormat(code) {
+    return this.config.codePattern.test(code);
+  }
+  /**
+   * 获取用户友好的错误消息
+   * Get user-friendly error message
+   */
+  getErrorMessage(error) {
+    var _a, _b;
+    if (error.name === "AbortError") {
+      return "\u8BF7\u6C42\u8D85\u65F6\uFF0C\u8BF7\u68C0\u67E5\u7F51\u7EDC\u8FDE\u63A5\u540E\u91CD\u8BD5";
+    }
+    if ((_a = error.message) == null ? void 0 : _a.includes("Failed to fetch")) {
+      return "\u7F51\u7EDC\u8FDE\u63A5\u5931\u8D25\uFF0C\u8BF7\u68C0\u67E5\u7F51\u7EDC\u8BBE\u7F6E";
+    }
+    if ((_b = error.message) == null ? void 0 : _b.includes("NetworkError")) {
+      return "\u7F51\u7EDC\u9519\u8BEF\uFF0C\u8BF7\u7A0D\u540E\u91CD\u8BD5";
+    }
+    return "\u6FC0\u6D3B\u8FC7\u7A0B\u4E2D\u53D1\u751F\u9519\u8BEF\uFF0C\u8BF7\u7A0D\u540E\u91CD\u8BD5";
+  }
+  /**
+   * 带重试机制的查询激活码
+   * Query activation code with retry mechanism
+   */
+  async queryActivationCodeWithRetry(code) {
+    var _a, _b, _c;
+    let lastError = null;
+    for (let attempt = 1; attempt <= this.config.maxRetries; attempt++) {
+      try {
+        console.log(`\u{1F4E1} Query attempt ${attempt}/${this.config.maxRetries}`);
+        const result = await this.queryActivationCode(code);
+        if (result.success) {
+          return result;
+        }
+        if (((_a = result.message) == null ? void 0 : _a.includes("\u4E0D\u5B58\u5728")) || ((_b = result.message) == null ? void 0 : _b.includes("\u65E0\u6548")) || ((_c = result.message) == null ? void 0 : _c.includes("\u67E5\u8BE2\u6FC0\u6D3B\u7801\u5931\u8D25"))) {
+          return result;
+        }
+        lastError = new Error(result.message);
+      } catch (error) {
+        console.error(`\u274C Query attempt ${attempt} failed:`, error);
+        lastError = error;
+      }
+      if (attempt < this.config.maxRetries) {
+        console.log(`\u23F3 Waiting ${this.config.retryDelay}ms before retry...`);
+        await this.delay(this.config.retryDelay);
+      }
+    }
+    return {
+      success: false,
+      message: (lastError == null ? void 0 : lastError.message) || "\u67E5\u8BE2\u6FC0\u6D3B\u7801\u5931\u8D25\uFF0C\u8BF7\u7A0D\u540E\u91CD\u8BD5"
+    };
   }
   /**
    * 查询激活码
@@ -3024,6 +3328,8 @@ var ActivationService = class {
    */
   async queryActivationCode(code) {
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), this.config.timeout);
       const response = await fetch(`${this.supabaseUrl}/rest/v1/activation_codes?code=eq.${encodeURIComponent(code)}`, {
         method: "GET",
         headers: {
@@ -3031,10 +3337,24 @@ var ActivationService = class {
           "Authorization": `Bearer ${this.supabaseKey}`,
           "Content-Type": "application/json",
           "Prefer": "return=representation"
-        }
+        },
+        signal: controller.signal
       });
+      clearTimeout(timeoutId);
       if (!response.ok) {
         console.error(`\u274C Supabase query failed: ${response.status} ${response.statusText}`);
+        if (response.status === 401 || response.status === 403) {
+          return {
+            success: false,
+            message: "\u670D\u52A1\u6682\u65F6\u4E0D\u53EF\u7528\uFF0C\u8BF7\u8054\u7CFB\u5BA2\u670D"
+          };
+        }
+        if (response.status === 429) {
+          return {
+            success: false,
+            message: "\u8BF7\u6C42\u8FC7\u4E8E\u9891\u7E41\uFF0C\u8BF7\u7A0D\u540E\u518D\u8BD5"
+          };
+        }
         return {
           success: false,
           message: "\u67E5\u8BE2\u6FC0\u6D3B\u7801\u5931\u8D25"
@@ -3053,6 +3373,12 @@ var ActivationService = class {
       };
     } catch (error) {
       console.error("\u274C Query activation code error:", error);
+      if (error.name === "AbortError") {
+        return {
+          success: false,
+          message: "\u8BF7\u6C42\u8D85\u65F6\uFF0C\u8BF7\u68C0\u67E5\u7F51\u7EDC\u8FDE\u63A5"
+        };
+      }
       return {
         success: false,
         message: "\u7F51\u7EDC\u8BF7\u6C42\u5931\u8D25"
@@ -3060,11 +3386,45 @@ var ActivationService = class {
     }
   }
   /**
+   * 带重试机制的标记激活码为已使用
+   * Mark activation code as used with retry mechanism
+   */
+  async markCodeAsUsedWithRetry(codeId) {
+    var _a, _b;
+    let lastError = null;
+    for (let attempt = 1; attempt <= this.config.maxRetries; attempt++) {
+      try {
+        console.log(`\u{1F4E1} Update attempt ${attempt}/${this.config.maxRetries}`);
+        const result = await this.markCodeAsUsed(codeId);
+        if (result.success) {
+          return result;
+        }
+        if (((_a = result.message) == null ? void 0 : _a.includes("\u6FC0\u6D3B\u5931\u8D25")) || ((_b = result.message) == null ? void 0 : _b.includes("\u66F4\u65B0\u6FC0\u6D3B\u7801\u72B6\u6001\u5931\u8D25"))) {
+          return result;
+        }
+        lastError = new Error(result.message);
+      } catch (error) {
+        console.error(`\u274C Update attempt ${attempt} failed:`, error);
+        lastError = error;
+      }
+      if (attempt < this.config.maxRetries) {
+        console.log(`\u23F3 Waiting ${this.config.retryDelay}ms before retry...`);
+        await this.delay(this.config.retryDelay);
+      }
+    }
+    return {
+      success: false,
+      message: (lastError == null ? void 0 : lastError.message) || "\u6FC0\u6D3B\u5931\u8D25\uFF0C\u8BF7\u7A0D\u540E\u91CD\u8BD5"
+    };
+  }
+  /**
    * 标记激活码为已使用
    * Mark activation code as used
    */
   async markCodeAsUsed(codeId) {
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), this.config.timeout);
       const response = await fetch(`${this.supabaseUrl}/rest/v1/activation_codes?id=eq.${codeId}`, {
         method: "PATCH",
         headers: {
@@ -3076,13 +3436,27 @@ var ActivationService = class {
         body: JSON.stringify({
           status: "used",
           used_at: new Date().toISOString()
-        })
+        }),
+        signal: controller.signal
       });
+      clearTimeout(timeoutId);
       if (!response.ok) {
         console.error(`\u274C Supabase update failed: ${response.status} ${response.statusText}`);
+        if (response.status === 401 || response.status === 403) {
+          return {
+            success: false,
+            message: "\u6FC0\u6D3B\u5931\u8D25\uFF0C\u6743\u9650\u4E0D\u8DB3"
+          };
+        }
+        if (response.status === 404) {
+          return {
+            success: false,
+            message: "\u6FC0\u6D3B\u7801\u4E0D\u5B58\u5728"
+          };
+        }
         return {
           success: false,
-          message: "\u66F4\u65B0\u6FC0\u6D3B\u7801\u72B6\u6001\u5931\u8D25"
+          message: "\u6FC0\u6D3B\u5931\u8D25\uFF0C\u8BF7\u7A0D\u540E\u91CD\u8BD5"
         };
       }
       return {
@@ -3090,11 +3464,24 @@ var ActivationService = class {
       };
     } catch (error) {
       console.error("\u274C Mark code as used error:", error);
+      if (error.name === "AbortError") {
+        return {
+          success: false,
+          message: "\u8BF7\u6C42\u8D85\u65F6\uFF0C\u8BF7\u91CD\u8BD5"
+        };
+      }
       return {
         success: false,
         message: "\u7F51\u7EDC\u8BF7\u6C42\u5931\u8D25"
       };
     }
+  }
+  /**
+   * 延迟函数
+   * Delay function
+   */
+  delay(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
   /**
    * 检查许可证类型
@@ -4962,14 +5349,16 @@ var ImmersiveWritingService = class {
    */
   async updateSceneWordCount(scenePath, content) {
     try {
-      const wordCount = content.replace(/\s+/g, "").length;
-      const sceneData = this.projectService.getSceneData(scenePath);
-      if (sceneData) {
-        await this.projectService.updateSceneMetadata(scenePath, {
-          wordCount,
-          lastModified: new Date()
-        });
-      }
+      const wordCountService = this.projectService.getWordCountService();
+      wordCountService.debounceSceneUpdate(scenePath, content, async (wordCount) => {
+        const sceneData = this.projectService.getSceneData(scenePath);
+        if (sceneData) {
+          await this.projectService.updateSceneMetadata(scenePath, {
+            wordCount,
+            lastModified: new Date()
+          });
+        }
+      });
     } catch (error) {
       console.warn(`Failed to update word count for scene: ${scenePath}`, error);
     }

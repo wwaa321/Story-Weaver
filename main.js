@@ -27,10 +27,255 @@ __export(main_exports, {
   default: () => StoryWeaverPlugin
 });
 module.exports = __toCommonJS(main_exports);
-var import_obsidian13 = require("obsidian");
+var import_obsidian14 = require("obsidian");
 
 // src/services/ProjectService.ts
-var import_obsidian = require("obsidian");
+var import_obsidian2 = require("obsidian");
+
+// src/utils/Logger.ts
+var Logger = class {
+  /**
+   * 配置日志器
+   * Configure the logger
+   */
+  static configure(config) {
+    this.config = { ...this.config, ...config };
+  }
+  /**
+   * 设置日志级别
+   * Set log level
+   */
+  static setLevel(level) {
+    this.config.level = level;
+  }
+  /**
+   * 启用调试模式
+   * Enable debug mode
+   */
+  static enableDebugMode() {
+    this.config.level = 0 /* DEBUG */;
+  }
+  /**
+   * 禁用调试模式
+   * Disable debug mode (set to INFO level)
+   */
+  static disableDebugMode() {
+    this.config.level = 1 /* INFO */;
+  }
+  /**
+   * 静默所有日志
+   * Silence all logs
+   */
+  static silence() {
+    this.config.level = 4 /* SILENT */;
+  }
+  /**
+   * 调试日志
+   * Debug log - only shown in debug mode
+   */
+  static debug(message, context, ...args) {
+    this.log(0 /* DEBUG */, message, context, ...args);
+  }
+  /**
+   * 信息日志
+   * Info log
+   */
+  static info(message, context, ...args) {
+    this.log(1 /* INFO */, message, context, ...args);
+  }
+  /**
+   * 警告日志
+   * Warning log
+   */
+  static warn(message, context, ...args) {
+    this.log(2 /* WARN */, message, context, ...args);
+  }
+  /**
+   * 错误日志
+   * Error log
+   */
+  static error(message, context, ...args) {
+    this.log(3 /* ERROR */, message, context, ...args);
+  }
+  /**
+   * 通用日志方法
+   * Generic log method
+   */
+  static log(level, message, context, ...args) {
+    if (level < this.config.level) {
+      return;
+    }
+    const prefix = this.buildPrefix(level, context);
+    const consoleMethod = this.getConsoleMethod(level);
+    if (this.config.enableColors && level !== 4 /* SILENT */) {
+      consoleMethod(
+        `%c${prefix}%c ${message}`,
+        this.levelColors[level],
+        "color: inherit",
+        ...args
+      );
+    } else {
+      consoleMethod(`${prefix} ${message}`, ...args);
+    }
+  }
+  /**
+   * 构建日志前缀
+   * Build log prefix
+   */
+  static buildPrefix(level, context) {
+    const parts = [];
+    if (this.config.enableTimestamp) {
+      parts.push(this.getTimestamp());
+    }
+    parts.push(`[${this.levelPrefixes[level]}]`);
+    if (this.config.enableContext && context) {
+      parts.push(`[${context}]`);
+    }
+    return parts.join(" ");
+  }
+  /**
+   * 获取时间戳
+   * Get timestamp
+   */
+  static getTimestamp() {
+    const now = new Date();
+    const hours = String(now.getHours()).padStart(2, "0");
+    const minutes = String(now.getMinutes()).padStart(2, "0");
+    const seconds = String(now.getSeconds()).padStart(2, "0");
+    const milliseconds = String(now.getMilliseconds()).padStart(3, "0");
+    return `${hours}:${minutes}:${seconds}.${milliseconds}`;
+  }
+  /**
+   * 获取对应的控制台方法
+   * Get corresponding console method
+   */
+  static getConsoleMethod(level) {
+    switch (level) {
+      case 0 /* DEBUG */:
+        return console.debug || console.log;
+      case 1 /* INFO */:
+        return console.info || console.log;
+      case 2 /* WARN */:
+        return console.warn;
+      case 3 /* ERROR */:
+        return console.error;
+      default:
+        return console.log;
+    }
+  }
+  /**
+   * 创建带上下文的日志器
+   * Create a logger with context
+   */
+  static createContextLogger(context) {
+    return new ContextLogger(context);
+  }
+  /**
+   * 分组日志开始
+   * Start a grouped log
+   */
+  static group(label) {
+    if (this.config.level < 4 /* SILENT */) {
+      console.group(label);
+    }
+  }
+  /**
+   * 分组日志结束
+   * End a grouped log
+   */
+  static groupEnd() {
+    if (this.config.level < 4 /* SILENT */) {
+      console.groupEnd();
+    }
+  }
+  /**
+   * 表格日志
+   * Table log
+   */
+  static table(data, columns) {
+    if (this.config.level <= 0 /* DEBUG */) {
+      console.table(data, columns);
+    }
+  }
+  /**
+   * 计时开始
+   * Start a timer
+   */
+  static time(label) {
+    if (this.config.level <= 0 /* DEBUG */) {
+      console.time(label);
+    }
+  }
+  /**
+   * 计时结束
+   * End a timer
+   */
+  static timeEnd(label) {
+    if (this.config.level <= 0 /* DEBUG */) {
+      console.timeEnd(label);
+    }
+  }
+  /**
+   * 获取当前配置
+   * Get current configuration
+   */
+  static getConfig() {
+    return { ...this.config };
+  }
+  /**
+   * 检查是否为调试模式
+   * Check if debug mode is enabled
+   */
+  static isDebugMode() {
+    return this.config.level === 0 /* DEBUG */;
+  }
+};
+/** 默认配置 */
+Logger.config = {
+  level: 1 /* INFO */,
+  enableTimestamp: true,
+  enableContext: true,
+  enableColors: true
+};
+/** 日志级别颜色映射 */
+Logger.levelColors = {
+  [0 /* DEBUG */]: "color: #999999",
+  [1 /* INFO */]: "color: #2196F3",
+  [2 /* WARN */]: "color: #FF9800",
+  [3 /* ERROR */]: "color: #F44336",
+  [4 /* SILENT */]: ""
+};
+/** 日志级别前缀 */
+Logger.levelPrefixes = {
+  [0 /* DEBUG */]: "DEBUG",
+  [1 /* INFO */]: "INFO",
+  [2 /* WARN */]: "WARN",
+  [3 /* ERROR */]: "ERROR",
+  [4 /* SILENT */]: ""
+};
+var ContextLogger = class {
+  constructor(context) {
+    this.context = context;
+  }
+  debug(message, ...args) {
+    Logger.debug(message, this.context, ...args);
+  }
+  info(message, ...args) {
+    Logger.info(message, this.context, ...args);
+  }
+  warn(message, ...args) {
+    Logger.warn(message, this.context, ...args);
+  }
+  error(message, ...args) {
+    Logger.error(message, this.context, ...args);
+  }
+  time(label) {
+    Logger.time(`${this.context}:${label}`);
+  }
+  timeEnd(label) {
+    Logger.timeEnd(`${this.context}:${label}`);
+  }
+};
 
 // src/services/MetadataManager.ts
 var MetadataManager = class {
@@ -94,7 +339,7 @@ var MetadataManager = class {
         });
       });
     } catch (error) {
-      console.error(`Failed to remove metadata fields from ${file.path}:`, error);
+      Logger.error(`Failed to remove metadata fields from ${file.path}`, "MetadataManager", error);
       throw new Error(`Failed to remove metadata fields: ${error.message}`);
     }
   }
@@ -251,7 +496,16 @@ var MetadataManager = class {
     if (sceneData.location !== void 0)
       yaml.location = sceneData.location;
     if (sceneData.storyTime !== void 0) {
-      yaml.story_time = sceneData.storyTime instanceof Date ? sceneData.storyTime.toISOString() : sceneData.storyTime;
+      if (sceneData.storyTime instanceof Date) {
+        const year = sceneData.storyTime.getFullYear();
+        const month = String(sceneData.storyTime.getMonth() + 1).padStart(2, "0");
+        const day = String(sceneData.storyTime.getDate()).padStart(2, "0");
+        yaml.story_time = `${year}-${month}-${day}`;
+      } else if (sceneData.storyTime === null) {
+        yaml.story_time = null;
+      } else {
+        yaml.story_time = sceneData.storyTime;
+      }
     }
     if (sceneData.synopsis !== void 0)
       yaml.synopsis = sceneData.synopsis;
@@ -325,8 +579,8 @@ var MetadataManager = class {
       sceneData.pov = yaml.pov;
     if (yaml.location)
       sceneData.location = yaml.location;
-    if (yaml.story_time) {
-      sceneData.storyTime = typeof yaml.story_time === "string" ? new Date(yaml.story_time) : yaml.story_time;
+    if (yaml.story_time !== void 0) {
+      sceneData.storyTime = this.parseStoryTime(yaml.story_time);
     }
     if (yaml.synopsis)
       sceneData.synopsis = yaml.synopsis;
@@ -439,7 +693,7 @@ var MetadataManager = class {
       const content = await this.app.vault.read(file);
       return content.startsWith("---\n") && content.includes("\n---\n");
     } catch (error) {
-      console.error(`Failed to check frontmatter for ${file.path}:`, error);
+      Logger.error(`Failed to check frontmatter for ${file.path}`, "MetadataManager", error);
       return false;
     }
   }
@@ -461,9 +715,95 @@ ${Object.entries(defaultMetadata).map(([key, value]) => `${key}: ${JSON.stringif
         await this.app.vault.modify(file, newContent);
       }
     } catch (error) {
-      console.error(`Failed to ensure frontmatter for ${file.path}:`, error);
+      Logger.error(`Failed to ensure frontmatter for ${file.path}`, "MetadataManager", error);
       throw new Error(`Failed to ensure frontmatter: ${error.message}`);
     }
+  }
+  parseStoryTime(value) {
+    if (!value)
+      return null;
+    if (value instanceof Date) {
+      if (!isNaN(value.getTime())) {
+        return value;
+      }
+      Logger.warn("Invalid Date object provided", "MetadataManager");
+      return null;
+    }
+    if (typeof value === "string") {
+      if (!value.trim())
+        return null;
+      const isoDateMatch = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      if (isoDateMatch) {
+        const year = parseInt(isoDateMatch[1]);
+        const month = parseInt(isoDateMatch[2]) - 1;
+        const day = parseInt(isoDateMatch[3]);
+        const date = new Date(year, month, day);
+        if (!isNaN(date.getTime())) {
+          return date;
+        }
+      }
+      const isoDatetimeMatch = value.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})/);
+      if (isoDatetimeMatch) {
+        const date = new Date(value);
+        if (!isNaN(date.getTime())) {
+          return date;
+        }
+      }
+      const legacyDatetimeMatch = value.match(/^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})$/);
+      if (legacyDatetimeMatch) {
+        const year = parseInt(legacyDatetimeMatch[1]);
+        const month = parseInt(legacyDatetimeMatch[2]) - 1;
+        const day = parseInt(legacyDatetimeMatch[3]);
+        const hour = parseInt(legacyDatetimeMatch[4]);
+        const minute = parseInt(legacyDatetimeMatch[5]);
+        const second = parseInt(legacyDatetimeMatch[6]);
+        const date = new Date(year, month, day, hour, minute, second);
+        if (!isNaN(date.getTime())) {
+          return date;
+        }
+      }
+      const legacyDatetimeMatch2 = value.match(/^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})$/);
+      if (legacyDatetimeMatch2) {
+        const year = parseInt(legacyDatetimeMatch2[1]);
+        const month = parseInt(legacyDatetimeMatch2[2]) - 1;
+        const day = parseInt(legacyDatetimeMatch2[3]);
+        const hour = parseInt(legacyDatetimeMatch2[4]);
+        const minute = parseInt(legacyDatetimeMatch2[5]);
+        const date = new Date(year, month, day, hour, minute);
+        if (!isNaN(date.getTime())) {
+          return date;
+        }
+      }
+      const chineseDateMatch = value.match(/^(\d{4})年(\d{2})月(\d{2})日$/);
+      if (chineseDateMatch) {
+        const year = parseInt(chineseDateMatch[1]);
+        const month = parseInt(chineseDateMatch[2]) - 1;
+        const day = parseInt(chineseDateMatch[3]);
+        const date = new Date(year, month, day);
+        if (!isNaN(date.getTime())) {
+          return date;
+        }
+      }
+      const slashDateMatch = value.match(/^(\d{4})\/(\d{2})\/(\d{2})$/);
+      if (slashDateMatch) {
+        const year = parseInt(slashDateMatch[1]);
+        const month = parseInt(slashDateMatch[2]) - 1;
+        const day = parseInt(slashDateMatch[3]);
+        const date = new Date(year, month, day);
+        if (!isNaN(date.getTime())) {
+          return date;
+        }
+      }
+      const fallbackDate = new Date(value);
+      if (!isNaN(fallbackDate.getTime())) {
+        Logger.debug(`Parsed date using fallback: ${value}`, "MetadataManager");
+        return fallbackDate;
+      }
+      Logger.warn(`Failed to parse story_time: ${value}`, "MetadataManager");
+      return null;
+    }
+    Logger.warn(`Invalid story_time type: ${typeof value}`, "MetadataManager");
+    return null;
   }
 };
 
@@ -710,13 +1050,492 @@ var WordCountService = class {
   }
 };
 
+// src/services/ServiceContainer.ts
+var ServiceFactory = class {
+  /**
+   * 创建默认的服务容器
+   * Create default service container
+   */
+  static createDefaultContainer(app) {
+    const metadataManager = new MetadataManager(app);
+    const wordCountService = new WordCountService(app);
+    return {
+      app,
+      metadataManager,
+      wordCountService
+    };
+  }
+  /**
+   * 创建自定义服务容器
+   * Create custom service container
+   */
+  static createContainer(config) {
+    const metadataManager = config.metadataManager || new MetadataManager(config.app);
+    const wordCountService = config.wordCountService || new WordCountService(config.app);
+    return {
+      app: config.app,
+      metadataManager,
+      wordCountService
+    };
+  }
+  /**
+   * 创建测试用的 Mock 服务容器
+   * Create mock service container for testing
+   */
+  static createMockContainer(app) {
+    const metadataManager = new MetadataManager(app);
+    const wordCountService = new WordCountService(app);
+    return {
+      app,
+      metadataManager,
+      wordCountService
+    };
+  }
+};
+
+// src/services/ResourceManager.ts
+var ResourceManager = class {
+  constructor() {
+    /** 防抖定时器映射 */
+    this.debounceTimers = /* @__PURE__ */ new Map();
+    /** 事件监听器引用列表 */
+    this.eventRefs = [];
+    /** 缓存映射列表 */
+    this.caches = /* @__PURE__ */ new Map();
+  }
+  /**
+   * 注册防抖定时器
+   * Register debounce timer
+   */
+  registerDebounceTimer(key, timer) {
+    const existingTimer = this.debounceTimers.get(key);
+    if (existingTimer) {
+      clearTimeout(existingTimer);
+    }
+    this.debounceTimers.set(key, timer);
+  }
+  /**
+   * 清除防抖定时器
+   * Clear debounce timer
+   */
+  clearDebounceTimer(key) {
+    const timer = this.debounceTimers.get(key);
+    if (timer) {
+      clearTimeout(timer);
+      this.debounceTimers.delete(key);
+    }
+  }
+  /**
+   * 清除所有防抖定时器
+   * Clear all debounce timers
+   */
+  clearAllDebounceTimers() {
+    for (const timer of this.debounceTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.debounceTimers.clear();
+  }
+  /**
+   * 获取防抖定时器数量
+   * Get debounce timer count
+   */
+  getDebounceTimerCount() {
+    return this.debounceTimers.size;
+  }
+  /**
+   * 注册事件监听器
+   * Register event listener
+   */
+  registerEventRef(eventRef) {
+    this.eventRefs.push(eventRef);
+  }
+  /**
+   * 注销事件监听器
+   * Unregister event listener
+   */
+  unregisterEventRef(eventRef) {
+    const index = this.eventRefs.indexOf(eventRef);
+    if (index > -1) {
+      this.eventRefs.splice(index, 1);
+    }
+  }
+  /**
+   * 清除所有事件监听器
+   * Clear all event listeners
+   */
+  clearAllEventRefs() {
+    this.eventRefs = [];
+  }
+  /**
+   * 获取事件监听器数量
+   * Get event listener count
+   */
+  getEventRefCount() {
+    return this.eventRefs.length;
+  }
+  /**
+   * 获取所有事件监听器引用
+   * Get all event listener references
+   */
+  getEventRefs() {
+    return [...this.eventRefs];
+  }
+  /**
+   * 注册缓存
+   * Register cache
+   */
+  registerCache(name, cache) {
+    this.caches.set(name, cache);
+  }
+  /**
+   * 清除指定缓存
+   * Clear specific cache
+   */
+  clearCache(name) {
+    const cache = this.caches.get(name);
+    if (cache) {
+      cache.clear();
+    }
+  }
+  /**
+   * 清除所有缓存
+   * Clear all caches
+   */
+  clearAllCaches() {
+    for (const cache of this.caches.values()) {
+      cache.clear();
+    }
+  }
+  /**
+   * 获取缓存数量
+   * Get cache count
+   */
+  getCacheCount() {
+    return this.caches.size;
+  }
+  /**
+   * 清理所有资源
+   * Cleanup all resources
+   */
+  cleanup() {
+    this.clearAllDebounceTimers();
+    this.clearAllEventRefs();
+    this.clearAllCaches();
+  }
+  /**
+   * 获取资源统计信息
+   * Get resource statistics
+   */
+  getStatistics() {
+    return {
+      debounceTimers: this.debounceTimers.size,
+      eventRefs: this.eventRefs.length,
+      caches: this.caches.size
+    };
+  }
+};
+
+// src/services/ErrorHandler.ts
+var import_obsidian = require("obsidian");
+var ErrorHandler = class {
+  /**
+   * 处理错误
+   * Handle error with logging and user notification
+   */
+  static handle(error, context, showNotice = true) {
+    const errorInfo = this.parseError(error, context);
+    console.error(
+      `[${errorInfo.type}] [${errorInfo.code}] ${errorInfo.message}`,
+      errorInfo.originalError || ""
+    );
+    if (showNotice) {
+      new import_obsidian.Notice(errorInfo.userMessage, 5e3);
+    }
+    return errorInfo;
+  }
+  /**
+   * 解析错误
+   * Parse error into structured error information
+   */
+  static parseError(error, context) {
+    let errorType = "UNKNOWN" /* UNKNOWN */;
+    let errorCode = "UNKNOWN_ERROR";
+    let errorMessage = "";
+    let userMessage = "";
+    let originalError;
+    if (typeof error === "string") {
+      errorMessage = error;
+      userMessage = this.getUserFriendlyMessage(error, errorCode);
+    } else {
+      errorMessage = error.message;
+      originalError = error;
+      const parsedInfo = this.parseErrorMessage(error.message);
+      errorType = parsedInfo.type;
+      errorCode = parsedInfo.code;
+      userMessage = parsedInfo.userMessage;
+    }
+    return {
+      type: errorType,
+      code: errorCode,
+      message: errorMessage,
+      userMessage,
+      context,
+      originalError
+    };
+  }
+  /**
+   * 解析错误消息
+   * Parse error message to extract error type and code
+   */
+  static parseErrorMessage(message) {
+    const lowerMessage = message.toLowerCase();
+    if (lowerMessage.includes("project") || lowerMessage.includes("\u9879\u76EE")) {
+      return this.parseProjectError(message);
+    }
+    if (lowerMessage.includes("file") || lowerMessage.includes("\u6587\u4EF6")) {
+      return this.parseFileError(message);
+    }
+    if (lowerMessage.includes("metadata") || lowerMessage.includes("\u5143\u6570\u636E")) {
+      return this.parseMetadataError(message);
+    }
+    if (lowerMessage.includes("validation") || lowerMessage.includes("\u9A8C\u8BC1")) {
+      return this.parseValidationError(message);
+    }
+    if (lowerMessage.includes("network") || lowerMessage.includes("\u7F51\u7EDC")) {
+      return this.parseNetworkError(message);
+    }
+    if (lowerMessage.includes("permission") || lowerMessage.includes("\u6743\u9650")) {
+      return this.parsePermissionError(message);
+    }
+    return {
+      type: "UNKNOWN" /* UNKNOWN */,
+      code: "UNKNOWN_ERROR",
+      userMessage: this.errorMessages["UNKNOWN_ERROR"]
+    };
+  }
+  /**
+   * 解析项目错误
+   * Parse project-related error
+   */
+  static parseProjectError(message) {
+    if (message.includes("not found") || message.includes("\u672A\u627E\u5230")) {
+      return {
+        type: "PROJECT" /* PROJECT */,
+        code: "PROJECT_NOT_FOUND",
+        userMessage: this.errorMessages["PROJECT_NOT_FOUND"]
+      };
+    }
+    if (message.includes("already exists") || message.includes("\u5DF2\u5B58\u5728")) {
+      return {
+        type: "PROJECT" /* PROJECT */,
+        code: "PROJECT_ALREADY_EXISTS",
+        userMessage: this.errorMessages["PROJECT_ALREADY_EXISTS"]
+      };
+    }
+    if (message.includes("required") || message.includes("\u4E0D\u80FD\u4E3A\u7A7A")) {
+      return {
+        type: "PROJECT" /* PROJECT */,
+        code: "PROJECT_PATH_REQUIRED",
+        userMessage: this.errorMessages["PROJECT_PATH_REQUIRED"]
+      };
+    }
+    return {
+      type: "PROJECT" /* PROJECT */,
+      code: "PROJECT_LOAD_FAILED",
+      userMessage: this.errorMessages["PROJECT_LOAD_FAILED"]
+    };
+  }
+  /**
+   * 解析文件错误
+   * Parse file-related error
+   */
+  static parseFileError(message) {
+    if (message.includes("not found") || message.includes("\u672A\u627E\u5230")) {
+      return {
+        type: "FILE" /* FILE */,
+        code: "FILE_NOT_FOUND",
+        userMessage: this.errorMessages["FILE_NOT_FOUND"]
+      };
+    }
+    if (message.includes("read") || message.includes("\u8BFB\u53D6")) {
+      return {
+        type: "FILE" /* FILE */,
+        code: "FILE_READ_FAILED",
+        userMessage: this.errorMessages["FILE_READ_FAILED"]
+      };
+    }
+    if (message.includes("write") || message.includes("\u5199\u5165")) {
+      return {
+        type: "FILE" /* FILE */,
+        code: "FILE_WRITE_FAILED",
+        userMessage: this.errorMessages["FILE_WRITE_FAILED"]
+      };
+    }
+    return {
+      type: "FILE" /* FILE */,
+      code: "FILE_INVALID_FORMAT",
+      userMessage: this.errorMessages["FILE_INVALID_FORMAT"]
+    };
+  }
+  /**
+   * 解析元数据错误
+   * Parse metadata-related error
+   */
+  static parseMetadataError(message) {
+    const lowerMessage = message.toLowerCase();
+    if (lowerMessage.includes("invalid") || lowerMessage.includes("\u65E0\u6548")) {
+      return {
+        type: "METADATA" /* METADATA */,
+        code: "METADATA_INVALID",
+        userMessage: this.errorMessages["METADATA_INVALID"]
+      };
+    }
+    if (lowerMessage.includes("missing") || lowerMessage.includes("\u7F3A\u5931")) {
+      return {
+        type: "METADATA" /* METADATA */,
+        code: "METADATA_MISSING",
+        userMessage: this.errorMessages["METADATA_MISSING"]
+      };
+    }
+    return {
+      type: "METADATA" /* METADATA */,
+      code: "METADATA_PARSE_FAILED",
+      userMessage: this.errorMessages["METADATA_PARSE_FAILED"]
+    };
+  }
+  /**
+   * 解析验证错误
+   * Parse validation-related error
+   */
+  static parseValidationError(message) {
+    if (message.includes("required") || message.includes("\u5FC5\u586B")) {
+      return {
+        type: "VALIDATION" /* VALIDATION */,
+        code: "VALIDATION_REQUIRED_FIELD",
+        userMessage: this.errorMessages["VALIDATION_REQUIRED_FIELD"]
+      };
+    }
+    return {
+      type: "VALIDATION" /* VALIDATION */,
+      code: "VALIDATION_FAILED",
+      userMessage: this.errorMessages["VALIDATION_FAILED"]
+    };
+  }
+  /**
+   * 解析网络错误
+   * Parse network-related error
+   */
+  static parseNetworkError(message) {
+    if (message.includes("timeout") || message.includes("\u8D85\u65F6")) {
+      return {
+        type: "NETWORK" /* NETWORK */,
+        code: "NETWORK_TIMEOUT",
+        userMessage: this.errorMessages["NETWORK_TIMEOUT"]
+      };
+    }
+    if (message.includes("unauthorized") || message.includes("\u6388\u6743")) {
+      return {
+        type: "NETWORK" /* NETWORK */,
+        code: "NETWORK_UNAUTHORIZED",
+        userMessage: this.errorMessages["NETWORK_UNAUTHORIZED"]
+      };
+    }
+    return {
+      type: "NETWORK" /* NETWORK */,
+      code: "NETWORK_ERROR",
+      userMessage: this.errorMessages["NETWORK_ERROR"]
+    };
+  }
+  /**
+   * 解析权限错误
+   * Parse permission-related error
+   */
+  static parsePermissionError(message) {
+    if (message.includes("file") || message.includes("\u6587\u4EF6")) {
+      return {
+        type: "PERMISSION" /* PERMISSION */,
+        code: "PERMISSION_FILE_ACCESS",
+        userMessage: this.errorMessages["PERMISSION_FILE_ACCESS"]
+      };
+    }
+    return {
+      type: "PERMISSION" /* PERMISSION */,
+      code: "PERMISSION_DENIED",
+      userMessage: this.errorMessages["PERMISSION_DENIED"]
+    };
+  }
+  /**
+   * 获取用户友好的错误消息
+   * Get user-friendly error message
+   */
+  static getUserFriendlyMessage(errorMessage, errorCode) {
+    return this.errorMessages[errorCode] || errorMessage || this.errorMessages["UNKNOWN_ERROR"];
+  }
+  /**
+   * 创建自定义错误
+   * Create custom error with specific type and code
+   */
+  static createError(type, code, message, userMessage) {
+    const error = new Error(message);
+    error.type = type;
+    error.code = code;
+    error.userMessage = userMessage || this.errorMessages[code] || message;
+    return error;
+  }
+  /**
+   * 记录警告
+   * Log warning message
+   */
+  static warn(message, context) {
+    console.warn(`[WARNING] ${context ? `[${context}] ` : ""}${message}`);
+  }
+  /**
+   * 记录信息
+   * Log info message
+   */
+  static info(message, context) {
+    console.log(`[INFO] ${context ? `[${context}] ` : ""}${message}`);
+  }
+};
+/** 错误消息映射 */
+ErrorHandler.errorMessages = {
+  // 项目相关错误
+  "PROJECT_NOT_FOUND": "\u9879\u76EE\u672A\u627E\u5230\uFF0C\u8BF7\u68C0\u67E5\u9879\u76EE\u8DEF\u5F84\u662F\u5426\u6B63\u786E",
+  "PROJECT_LOAD_FAILED": "\u9879\u76EE\u52A0\u8F7D\u5931\u8D25\uFF0C\u8BF7\u7A0D\u540E\u91CD\u8BD5",
+  "PROJECT_CREATE_FAILED": "\u9879\u76EE\u521B\u5EFA\u5931\u8D25\uFF0C\u8BF7\u68C0\u67E5\u8DEF\u5F84\u6743\u9650",
+  "PROJECT_ALREADY_EXISTS": "\u9879\u76EE\u8DEF\u5F84\u5DF2\u5B58\u5728\uFF0C\u8BF7\u9009\u62E9\u5176\u4ED6\u8DEF\u5F84",
+  "PROJECT_PATH_REQUIRED": "\u9879\u76EE\u540D\u79F0\u548C\u8DEF\u5F84\u4E0D\u80FD\u4E3A\u7A7A",
+  // 文件相关错误
+  "FILE_NOT_FOUND": "\u6587\u4EF6\u672A\u627E\u5230\uFF0C\u53EF\u80FD\u5DF2\u88AB\u5220\u9664\u6216\u79FB\u52A8",
+  "FILE_READ_FAILED": "\u6587\u4EF6\u8BFB\u53D6\u5931\u8D25\uFF0C\u8BF7\u68C0\u67E5\u6587\u4EF6\u6743\u9650",
+  "FILE_WRITE_FAILED": "\u6587\u4EF6\u5199\u5165\u5931\u8D25\uFF0C\u8BF7\u68C0\u67E5\u78C1\u76D8\u7A7A\u95F4\u548C\u6743\u9650",
+  "FILE_INVALID_FORMAT": "\u6587\u4EF6\u683C\u5F0F\u65E0\u6548\uFF0C\u8BF7\u68C0\u67E5\u6587\u4EF6\u5185\u5BB9",
+  // 元数据相关错误
+  "METADATA_INVALID": "\u5143\u6570\u636E\u65E0\u6548\uFF0C\u8BF7\u68C0\u67E5\u6587\u4EF6frontmatter\u683C\u5F0F",
+  "METADATA_MISSING": "\u5143\u6570\u636E\u7F3A\u5931\uFF0C\u8BF7\u6DFB\u52A0\u5FC5\u8981\u7684frontmatter\u5B57\u6BB5",
+  "METADATA_PARSE_FAILED": "\u5143\u6570\u636E\u89E3\u6790\u5931\u8D25\uFF0C\u8BF7\u68C0\u67E5YAML\u683C\u5F0F",
+  // 验证相关错误
+  "VALIDATION_FAILED": "\u6570\u636E\u9A8C\u8BC1\u5931\u8D25\uFF0C\u8BF7\u68C0\u67E5\u8F93\u5165\u5185\u5BB9",
+  "VALIDATION_REQUIRED_FIELD": "\u5FC5\u586B\u5B57\u6BB5\u4E0D\u80FD\u4E3A\u7A7A",
+  "VALIDATION_INVALID_VALUE": "\u5B57\u6BB5\u503C\u65E0\u6548\uFF0C\u8BF7\u68C0\u67E5\u8F93\u5165\u8303\u56F4",
+  // 网络相关错误
+  "NETWORK_ERROR": "\u7F51\u7EDC\u8FDE\u63A5\u5931\u8D25\uFF0C\u8BF7\u68C0\u67E5\u7F51\u7EDC\u8BBE\u7F6E",
+  "NETWORK_TIMEOUT": "\u7F51\u7EDC\u8BF7\u6C42\u8D85\u65F6\uFF0C\u8BF7\u7A0D\u540E\u91CD\u8BD5",
+  "NETWORK_UNAUTHORIZED": "\u6388\u6743\u5931\u8D25\uFF0C\u8BF7\u68C0\u67E5\u8BB8\u53EF\u8BC1\u5BC6\u94A5",
+  // 权限相关错误
+  "PERMISSION_DENIED": "\u6743\u9650\u4E0D\u8DB3\uFF0C\u65E0\u6CD5\u6267\u884C\u6B64\u64CD\u4F5C",
+  "PERMISSION_FILE_ACCESS": "\u6587\u4EF6\u8BBF\u95EE\u6743\u9650\u4E0D\u8DB3",
+  // 未知错误
+  "UNKNOWN_ERROR": "\u53D1\u751F\u672A\u77E5\u9519\u8BEF\uFF0C\u8BF7\u67E5\u770B\u63A7\u5236\u53F0\u65E5\u5FD7"
+};
+
 // src/services/ProjectService.ts
 var _ProjectService = class {
   /**
    * 私有构造函数，确保单例模式
    * Private constructor to ensure singleton pattern
    */
-  constructor(app) {
+  constructor(serviceContainer) {
     /** 当前项目数据 */
     this.currentProject = null;
     /** 场景数据缓存 */
@@ -729,10 +1548,6 @@ var _ProjectService = class {
     this.settings = null;
     /** 缓存是否已初始化 */
     this.cacheInitialized = false;
-    /** 防抖定时器 */
-    this.debounceTimers = /* @__PURE__ */ new Map();
-    /** 事件监听器引用 */
-    this.eventRefs = [];
     /** 文件系统监听是否已启用 */
     this.fileSystemListenerEnabled = false;
     /** 待更新的字数统计缓存 */
@@ -741,9 +1556,17 @@ var _ProjectService = class {
     this.lastSavedWordCounts = /* @__PURE__ */ new Map();
     /** 每日字数快照，用于计算今日新增 */
     this.dailyWordSnapshots = /* @__PURE__ */ new Map();
-    this.app = app;
-    this.metadataManager = new MetadataManager(app);
-    this.wordCountService = new WordCountService(app);
+    this.serviceContainer = serviceContainer;
+    this.app = serviceContainer.app;
+    this.metadataManager = serviceContainer.metadataManager;
+    this.wordCountService = serviceContainer.wordCountService;
+    this.resourceManager = new ResourceManager();
+    this.resourceManager.registerCache("sceneCache", this.sceneCache);
+    this.resourceManager.registerCache("characterCache", this.characterCache);
+    this.resourceManager.registerCache("locationCache", this.locationCache);
+    this.resourceManager.registerCache("pendingWordCountUpdates", this.pendingWordCountUpdates);
+    this.resourceManager.registerCache("lastSavedWordCounts", this.lastSavedWordCounts);
+    this.resourceManager.registerCache("dailyWordSnapshots", this.dailyWordSnapshots);
     this.wordCountService.setProjectTotalUpdateCallback(async () => {
       await this.updateProjectCurrentWordCount();
     });
@@ -752,12 +1575,13 @@ var _ProjectService = class {
    * 获取 ProjectService 单例实例
    * Get ProjectService singleton instance
    */
-  static getInstance(app) {
+  static getInstance(app, serviceContainer) {
     if (!_ProjectService.instance) {
-      if (!app) {
-        throw new Error("App instance is required for first initialization");
+      if (!app && !serviceContainer) {
+        throw new Error("App instance or ServiceContainer is required for first initialization");
       }
-      _ProjectService.instance = new _ProjectService(app);
+      const container = serviceContainer || ServiceFactory.createDefaultContainer(app);
+      _ProjectService.instance = new _ProjectService(container);
     }
     return _ProjectService.instance;
   }
@@ -765,9 +1589,9 @@ var _ProjectService = class {
    * 销毁单例实例 (用于测试和插件卸载)
    * Destroy singleton instance (for testing and plugin unload)
    */
-  static destroyInstance() {
+  static async destroyInstance() {
     if (_ProjectService.instance) {
-      _ProjectService.instance.cleanup().catch(console.error);
+      await _ProjectService.instance.cleanup();
       _ProjectService.instance = null;
     }
   }
@@ -785,7 +1609,7 @@ var _ProjectService = class {
   async loadProject(projectPath) {
     try {
       if (this.currentProject && this.currentProject.rootPath !== projectPath) {
-        console.log(`Unloading current project: ${this.currentProject.name}`);
+        Logger.info(`Unloading current project: ${this.currentProject.name}`, "ProjectService");
         await this.unloadCurrentProject();
       }
       const projectFolder = this.app.vault.getAbstractFileByPath(projectPath);
@@ -802,8 +1626,8 @@ var _ProjectService = class {
       if (!frontmatter) {
         throw new Error("Project dashboard missing frontmatter");
       }
-      console.log("Loading project with frontmatter:", frontmatter);
-      console.log("Target word count from frontmatter:", frontmatter.target_word_count);
+      Logger.debug("Loading project with frontmatter:", "ProjectService", frontmatter);
+      Logger.debug("Target word count from frontmatter:", "ProjectService", frontmatter.target_word_count);
       this.currentProject = {
         name: frontmatter.name || "Untitled Project",
         rootPath: projectPath,
@@ -824,9 +1648,9 @@ var _ProjectService = class {
       await this.initializeCache();
       this.enableFileSystemListener();
       await this.loadDailyWordSnapshots();
-      console.log(`Project loaded successfully: ${this.currentProject.name}`);
+      Logger.info(`Project loaded successfully: ${this.currentProject.name}`, "ProjectService");
     } catch (error) {
-      console.error("Failed to load project:", error);
+      ErrorHandler.handle(error, "ProjectService.loadProject");
       throw error;
     }
   }
@@ -838,13 +1662,21 @@ var _ProjectService = class {
     const startTime = performance.now();
     try {
       if (!name || !path) {
-        throw new Error("Project name and path are required");
+        throw ErrorHandler.createError(
+          "PROJECT" /* PROJECT */,
+          "PROJECT_PATH_REQUIRED",
+          "Project name and path are required"
+        );
       }
       const existingFolder = this.app.vault.getAbstractFileByPath(path);
       if (existingFolder) {
-        throw new Error(`Path already exists: ${path}`);
+        throw ErrorHandler.createError(
+          "PROJECT" /* PROJECT */,
+          "PROJECT_ALREADY_EXISTS",
+          `Path already exists: ${path}`
+        );
       }
-      console.log(`Creating project: ${name} at ${path}`);
+      Logger.info(`Creating project: ${name} at ${path}`, "ProjectService");
       await Promise.all([
         this.createProjectStructure(path),
         this.createProjectDashboard(name, path)
@@ -852,11 +1684,11 @@ var _ProjectService = class {
       await this.loadProject(path);
       const endTime = performance.now();
       const duration = Math.round(endTime - startTime);
-      console.log(`Project created successfully: ${name} at ${path} (${duration}ms)`);
+      Logger.info(`Project created successfully: ${name} at ${path} (${duration}ms)`, "ProjectService");
     } catch (error) {
       const endTime = performance.now();
       const duration = Math.round(endTime - startTime);
-      console.error(`Failed to create project after ${duration}ms:`, error);
+      ErrorHandler.handle(error, "ProjectService.createProject");
       throw error;
     }
   }
@@ -868,18 +1700,30 @@ var _ProjectService = class {
     try {
       const file = this.app.vault.getAbstractFileByPath(path);
       if (!file) {
-        throw new Error(`Scene file not found: ${path}`);
+        throw ErrorHandler.createError(
+          "FILE" /* FILE */,
+          "FILE_NOT_FOUND",
+          `Scene file not found: ${path}`
+        );
       }
       const currentScene = this.sceneCache.get(path);
       if (!currentScene) {
-        throw new Error(`Scene not found in cache: ${path}`);
+        throw ErrorHandler.createError(
+          "FILE" /* FILE */,
+          "FILE_NOT_FOUND",
+          `Scene not found in cache: ${path}`
+        );
       }
       const validation = this.metadataManager.validateSceneMetadata(metadata);
       if (!validation.isValid) {
-        throw new Error(`Invalid metadata: ${validation.errors.join(", ")}`);
+        throw ErrorHandler.createError(
+          "VALIDATION" /* VALIDATION */,
+          "VALIDATION_FAILED",
+          `Invalid metadata: ${validation.errors.join(", ")}`
+        );
       }
       if (validation.warnings.length > 0) {
-        console.warn(`Metadata warnings for ${path}: ${validation.warnings.join(", ")}`);
+        ErrorHandler.warn(`Metadata warnings for ${path}: ${validation.warnings.join(", ")}`);
       }
       const updatedScene = {
         ...currentScene,
@@ -889,9 +1733,9 @@ var _ProjectService = class {
       const yamlData = this.metadataManager.sceneDataToYaml(metadata);
       await this.metadataManager.updateMetadata(file, yamlData);
       this.sceneCache.set(path, updatedScene);
-      console.log(`Scene metadata updated successfully: ${path}`);
+      Logger.info(`Scene metadata updated successfully: ${path}`, "ProjectService");
     } catch (error) {
-      console.error("Failed to update scene metadata:", error);
+      ErrorHandler.handle(error, "ProjectService.updateSceneMetadata");
       throw error;
     }
   }
@@ -1007,49 +1851,39 @@ var _ProjectService = class {
    * Update project status
    */
   async updateProjectStatus(newStatus) {
-    console.log(`\u{1F680} updateProjectStatus called with: ${newStatus}`);
     if (!this.currentProject) {
-      console.error("\u274C No project loaded");
+      Logger.error("No project loaded", "ProjectService");
       throw new Error("No project loaded");
     }
-    console.log(`\u{1F4CB} Current project: ${this.currentProject.name}, current status: ${this.currentProject.status}`);
     const validStatuses = ["planning", "drafting", "revising", "editing", "completed"];
     if (!validStatuses.includes(newStatus)) {
-      console.error(`\u274C Invalid status: ${newStatus}`);
+      Logger.error(`Invalid status: ${newStatus}`, "ProjectService");
       throw new Error(`Invalid status: ${newStatus}`);
     }
-    console.log(`\u2705 Status validation passed: ${newStatus}`);
     const oldStatus = this.currentProject.status;
     this.currentProject.status = newStatus;
     this.currentProject.lastModified = new Date();
-    console.log(`\u{1F4BE} Updated in-memory status from ${oldStatus} to ${newStatus}`);
+    Logger.debug(`Status updated from ${oldStatus} to ${newStatus}`, "ProjectService");
     const dashboardPath = `${this.currentProject.rootPath}/_project.md`;
     const dashboardFile = this.app.vault.getAbstractFileByPath(dashboardPath);
-    console.log(`\u{1F4C1} Dashboard file path: ${dashboardPath}`);
     if (dashboardFile) {
-      console.log(`\u{1F4D6} Reading dashboard file...`);
       const content = await this.app.vault.read(dashboardFile);
-      console.log(`\u{1F4DD} Updating frontmatter field: status = ${newStatus}`);
       const updatedContent = this.updateFrontmatterField(content, "status", newStatus);
-      console.log(`\u{1F4BE} Writing updated content to file...`);
       await this.app.vault.modify(dashboardFile, updatedContent);
-      console.log(`\u2705 Dashboard file updated successfully`);
+      Logger.info("Project status updated successfully", "ProjectService");
     } else {
-      console.error(`\u274C Dashboard file not found: ${dashboardPath}`);
+      Logger.warn(`Dashboard file not found: ${dashboardPath}`, "ProjectService");
     }
-    console.log(`\u{1F504} Triggering dashboard refresh...`);
     this.app.workspace.trigger("layout-change");
     const activeFile = this.app.workspace.getActiveFile();
     if (activeFile && activeFile.path.endsWith("/_project.md")) {
       setTimeout(() => {
-        const activeLeaf = this.app.workspace.getActiveViewOfType(import_obsidian.MarkdownView);
+        const activeLeaf = this.app.workspace.getActiveViewOfType(import_obsidian2.MarkdownView);
         if (activeLeaf) {
-          console.log(`\u{1F504} Force rerendering active dashboard...`);
           activeLeaf.previewMode.rerender(true);
         }
       }, 50);
     }
-    console.log(`\u2705 updateProjectStatus completed`);
   }
   /**
    * 更新frontmatter中的字段
@@ -1061,37 +1895,26 @@ var _ProjectService = class {
     let inFrontmatter = false;
     let frontmatterEnd = -1;
     let fieldFound = false;
-    console.log(`\u{1F4C4} Processing ${lines.length} lines`);
     for (let i = 0; i < lines.length; i++) {
       if (lines[i].trim() === "---") {
         if (!inFrontmatter) {
           inFrontmatter = true;
-          console.log(`\u{1F4DD} Frontmatter start found at line ${i}`);
         } else {
           frontmatterEnd = i;
-          console.log(`\u{1F4DD} Frontmatter end found at line ${i}`);
           break;
         }
       } else if (inFrontmatter && lines[i].startsWith(`${field}:`)) {
-        console.log(`\u{1F50D} Found existing field at line ${i}: ${lines[i]}`);
         lines[i] = `${field}: "${value}"`;
-        console.log(`\u270F\uFE0F Updated field to: ${lines[i]}`);
         fieldFound = true;
-        const result2 = lines.join("\n");
-        console.log(`\u2705 Field updated successfully`);
-        return result2;
+        return lines.join("\n");
       }
     }
     if (!fieldFound && frontmatterEnd > 0) {
-      console.log(`\u2795 Field not found, adding new field at line ${frontmatterEnd}`);
       lines.splice(frontmatterEnd, 0, `${field}: "${value}"`);
-      console.log(`\u2705 New field added: ${field}: "${value}"`);
     } else if (!fieldFound) {
-      console.error(`\u274C Could not add field: frontmatterEnd = ${frontmatterEnd}`);
+      Logger.warn(`Could not add field to frontmatter: ${field}`, "ProjectService");
     }
-    const result = lines.join("\n");
-    console.log(`\u{1F4CB} updateFrontmatterField completed`);
-    return result;
+    return lines.join("\n");
   }
   /**
    * 导出项目
@@ -1101,12 +1924,8 @@ var _ProjectService = class {
     if (!this.currentProject) {
       throw new Error("No project loaded");
     }
-    console.log("Export project - to be implemented in later tasks", options);
+    Logger.warn("Export project not yet implemented", "ProjectService");
   }
-  /**
-   * 初始化缓存
-   * Initialize data cache by scanning project files
-   */
   async initializeCache() {
     if (!this.currentProject) {
       throw new Error("No project loaded");
@@ -1119,9 +1938,9 @@ var _ProjectService = class {
       await this.scanCharactersFolder();
       await this.scanLocationsFolder();
       this.cacheInitialized = true;
-      console.log("Cache initialized successfully");
+      Logger.info("Cache initialized successfully", "ProjectService");
     } catch (error) {
-      console.error("Failed to initialize cache:", error);
+      Logger.error("Failed to initialize cache", "ProjectService", error);
       throw error;
     }
   }
@@ -1133,28 +1952,40 @@ var _ProjectService = class {
     var _a;
     const folderStructure = ((_a = this.settings) == null ? void 0 : _a.folderStructure) || { scenes: "10_\u7A3F\u4EF6" };
     const scenesPath = `${this.currentProject.rootPath}/${folderStructure.scenes}`;
-    console.log(`Scanning scenes folder: ${scenesPath}`);
     const scenesFolder = this.app.vault.getAbstractFileByPath(scenesPath);
     if (!scenesFolder) {
-      console.warn(`Scenes folder not found: ${scenesPath}`);
+      Logger.warn(`Scenes folder not found: ${scenesPath}`, "ProjectService");
       return;
     }
     await this.scanFolderForScenes(scenesPath);
-    console.log(`Scenes scan completed. Found ${this.sceneCache.size} scenes`);
+    Logger.debug(`Scenes scan completed. Found ${this.sceneCache.size} scenes`, "ProjectService");
   }
-  /**
-   * 递归扫描文件夹中的场景文件
-   * Recursively scan folder for scene files
-   */
   async scanFolderForScenes(folderPath) {
-    const files = this.app.vault.getFiles().filter(
-      (file) => file.path.startsWith(folderPath) && file.extension === "md"
-    );
-    console.log(`Found ${files.length} markdown files in ${folderPath}`);
+    const folder = this.app.vault.getAbstractFileByPath(folderPath);
+    if (!folder || !(folder instanceof import_obsidian2.TFolder)) {
+      Logger.warn(`Folder not found or not a folder: ${folderPath}`, "ProjectService");
+      return;
+    }
+    const files = this.getMarkdownFilesInFolder(folder);
+    Logger.debug(`Found ${files.length} markdown files in ${folderPath}`, "ProjectService");
     for (const file of files) {
-      console.log(`Processing scene file: ${file.path}`);
       await this.processSceneFile(file);
     }
+  }
+  /**
+   * 递归获取文件夹中的所有 Markdown 文件
+   * Recursively get all Markdown files in a folder
+   */
+  getMarkdownFilesInFolder(folder) {
+    const files = [];
+    for (const child of folder.children) {
+      if (child instanceof import_obsidian2.TFile && child.extension === "md") {
+        files.push(child);
+      } else if (child instanceof import_obsidian2.TFolder) {
+        files.push(...this.getMarkdownFilesInFolder(child));
+      }
+    }
+    return files;
   }
   /**
    * 处理场景文件
@@ -1165,13 +1996,11 @@ var _ProjectService = class {
       const metadata = this.app.metadataCache.getFileCache(file);
       const frontmatter = metadata == null ? void 0 : metadata.frontmatter;
       const indexInfo = this.parseSceneIndexInfo(file, frontmatter);
-      console.log(`Scene index parsing for ${file.path}:`, indexInfo);
+      Logger.debug(`Scene index: ${JSON.stringify(indexInfo)}`, "ProjectService");
       let wordCount = (frontmatter == null ? void 0 : frontmatter.word_count) || 0;
-      console.log(`Scene ${file.path}: frontmatter word_count = ${frontmatter == null ? void 0 : frontmatter.word_count}`);
       if (!(frontmatter == null ? void 0 : frontmatter.word_count)) {
         const content = await this.app.vault.read(file);
         wordCount = this.calculateWordCount(content, file.path);
-        console.log(`Calculated word count for ${file.path}: ${wordCount}`);
         await this.updateSceneWordCountInFrontmatter(file, wordCount);
       }
       const sceneData = {
@@ -1201,9 +2030,12 @@ var _ProjectService = class {
     var _a;
     const folderStructure = ((_a = this.settings) == null ? void 0 : _a.folderStructure) || { characters: "20_\u89D2\u8272" };
     const charactersPath = `${this.currentProject.rootPath}/${folderStructure.characters}`;
-    const files = this.app.vault.getFiles().filter(
-      (file) => file.path.startsWith(charactersPath) && file.extension === "md"
-    );
+    const folder = this.app.vault.getAbstractFileByPath(charactersPath);
+    if (!folder || !(folder instanceof import_obsidian2.TFolder)) {
+      console.warn(`Characters folder not found: ${charactersPath}`);
+      return;
+    }
+    const files = this.getMarkdownFilesInFolder(folder);
     for (const file of files) {
       await this.processCharacterFile(file);
     }
@@ -1240,9 +2072,12 @@ var _ProjectService = class {
     var _a;
     const folderStructure = ((_a = this.settings) == null ? void 0 : _a.folderStructure) || { locations: "30_\u5730\u70B9" };
     const locationsPath = `${this.currentProject.rootPath}/${folderStructure.locations}`;
-    const files = this.app.vault.getFiles().filter(
-      (file) => file.path.startsWith(locationsPath) && file.extension === "md"
-    );
+    const folder = this.app.vault.getAbstractFileByPath(locationsPath);
+    if (!folder || !(folder instanceof import_obsidian2.TFolder)) {
+      console.warn(`Locations folder not found: ${locationsPath}`);
+      return;
+    }
+    const files = this.getMarkdownFilesInFolder(folder);
     for (const file of files) {
       await this.processLocationFile(file);
     }
@@ -1616,15 +2451,11 @@ SORT file.name
       const todayDateString = today.toISOString().split("T")[0];
       const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
       let todayWords = 0;
-      console.log(`Calculating today's words for date: ${todayDateString}`);
-      console.log(`Scene cache size: ${this.sceneCache.size}`);
-      console.log(`Daily snapshots size: ${this.dailyWordSnapshots.size}`);
       for (const [filePath, scene] of this.sceneCache.entries()) {
         const currentWordCount = scene.wordCount || 0;
         const snapshot = this.dailyWordSnapshots.get(filePath);
         const fileModTime = new Date(scene.lastModified);
         const wasModifiedToday = fileModTime >= todayStart;
-        console.log(`File ${filePath}: current=${currentWordCount}, modified=${fileModTime.toISOString()}, modifiedToday=${wasModifiedToday}`);
         let baselineWordCount = 0;
         let shouldCalculateIncrease = false;
         if (snapshot) {
@@ -1648,7 +2479,6 @@ SORT file.name
         if (shouldCalculateIncrease) {
           const increase = Math.max(0, currentWordCount - baselineWordCount);
           todayWords += increase;
-          console.log(`File ${filePath}: baseline=${baselineWordCount}, current=${currentWordCount}, increase=${increase}`);
         }
         const existingSnapshot = this.dailyWordSnapshots.get(filePath);
         if (!existingSnapshot || existingSnapshot.date !== todayDateString) {
@@ -1658,10 +2488,9 @@ SORT file.name
           });
         }
       }
-      console.log(`Today's total word increase: ${todayWords}`);
       return Math.max(0, todayWords);
     } catch (error) {
-      console.error("Failed to calculate today words:", error);
+      Logger.error("Failed to calculate today words", "ProjectService", error);
       return 0;
     }
   }
@@ -2030,21 +2859,13 @@ SORT file.name
   async cleanup() {
     await this.flushPendingWordCountUpdates();
     this.disableFileSystemListener();
-    for (const timer of this.debounceTimers.values()) {
-      clearTimeout(timer);
-    }
-    this.debounceTimers.clear();
-    this.pendingWordCountUpdates.clear();
-    this.lastSavedWordCounts.clear();
+    this.resourceManager.clearAllDebounceTimers();
     await this.saveDailyWordSnapshots();
     if (this.wordCountService) {
       await this.wordCountService.flushUpdates();
       this.wordCountService.destroy();
     }
-    this.sceneCache.clear();
-    this.characterCache.clear();
-    this.locationCache.clear();
-    this.dailyWordSnapshots.clear();
+    this.resourceManager.cleanup();
     this.currentProject = null;
     this.cacheInitialized = false;
   }
@@ -2053,15 +2874,11 @@ SORT file.name
    * Debounced execution function
    */
   debounce(key, fn, delay = 300) {
-    const existingTimer = this.debounceTimers.get(key);
-    if (existingTimer) {
-      clearTimeout(existingTimer);
-    }
     const timer = setTimeout(() => {
       fn();
-      this.debounceTimers.delete(key);
+      this.resourceManager.clearDebounceTimer(key);
     }, delay);
-    this.debounceTimers.set(key, timer);
+    this.resourceManager.registerDebounceTimer(key, timer);
   }
   /**
    * 检查缓存是否已初始化
@@ -2126,19 +2943,19 @@ SORT file.name
       }, 300);
     });
     const fileCreateRef = this.app.vault.on("create", (file) => {
-      if (file instanceof import_obsidian.TFile && file.extension === "md") {
+      if (file instanceof import_obsidian2.TFile && file.extension === "md") {
         this.debounce(`create-${file.path}`, () => {
           this.handleFileCreate(file);
         }, 100);
       }
     });
     const fileDeleteRef = this.app.vault.on("delete", (file) => {
-      if (file instanceof import_obsidian.TFile && file.extension === "md") {
+      if (file instanceof import_obsidian2.TFile && file.extension === "md") {
         this.handleFileDelete(file);
       }
     });
     const fileRenameRef = this.app.vault.on("rename", (file, oldPath) => {
-      if (file instanceof import_obsidian.TFile && file.extension === "md") {
+      if (file instanceof import_obsidian2.TFile && file.extension === "md") {
         this.debounce(`rename-${file.path}`, () => {
           this.handleFileRename(file, oldPath);
         }, 100);
@@ -2146,7 +2963,7 @@ SORT file.name
     });
     const fileModifyRef = this.app.vault.on("modify", (file) => {
       var _a, _b;
-      if (file instanceof import_obsidian.TFile && file.extension === "md") {
+      if (file instanceof import_obsidian2.TFile && file.extension === "md") {
         const debounceDelay = ((_b = (_a = this.settings) == null ? void 0 : _a.wordCountSettings) == null ? void 0 : _b.updateDebounceDelay) || 3e3;
         this.debounce(`modify-${file.path}`, () => {
           this.handleFileModify(file);
@@ -2163,7 +2980,7 @@ SORT file.name
     if (activeLeafChangeRef) {
       eventRefs.push(activeLeafChangeRef);
     }
-    this.eventRefs.push(...eventRefs);
+    eventRefs.forEach((ref) => this.resourceManager.registerEventRef(ref));
     this.fileSystemListenerEnabled = true;
     console.log("File system listener enabled");
   }
@@ -2175,13 +2992,13 @@ SORT file.name
     if (!this.fileSystemListenerEnabled) {
       return;
     }
-    this.eventRefs.forEach((ref) => {
+    const eventRefs = this.resourceManager.getEventRefs();
+    eventRefs.forEach((ref) => {
       this.app.metadataCache.offref(ref);
       this.app.vault.offref(ref);
     });
-    this.eventRefs = [];
+    this.resourceManager.clearAllEventRefs();
     this.fileSystemListenerEnabled = false;
-    console.log("File system listener disabled");
   }
   /**
    * 处理元数据变化事件
@@ -2207,15 +3024,11 @@ SORT file.name
           await this.updateProjectData(file);
           break;
       }
-      console.log(`Cache updated for file: ${file.path}`);
+      Logger.debug(`Cache updated for file: ${file.path}`, "ProjectService");
     } catch (error) {
-      console.error(`Failed to handle metadata change for ${file.path}:`, error);
+      Logger.error(`Failed to handle metadata change for ${file.path}`, "ProjectService", error);
     }
   }
-  /**
-   * 处理文件创建事件
-   * Handle file create event
-   */
   async handleFileCreate(file) {
     if (!this.currentProject || !this.isProjectFile(file.path)) {
       return;
@@ -2233,15 +3046,11 @@ SORT file.name
           await this.processLocationFile(file);
           break;
       }
-      console.log(`File added to cache: ${file.path}`);
+      Logger.debug(`File added to cache: ${file.path}`, "ProjectService");
     } catch (error) {
-      console.error(`Failed to handle file creation for ${file.path}:`, error);
+      Logger.error(`Failed to handle file creation for ${file.path}`, "ProjectService", error);
     }
   }
-  /**
-   * 处理文件删除事件
-   * Handle file delete event
-   */
   handleFileDelete(file) {
     if (!this.currentProject || !this.isProjectFile(file.path)) {
       return;
@@ -2259,9 +3068,9 @@ SORT file.name
           this.locationCache.delete(file.path);
           break;
       }
-      console.log(`File removed from cache: ${file.path}`);
+      Logger.debug(`File removed from cache: ${file.path}`, "ProjectService");
     } catch (error) {
-      console.error(`Failed to handle file deletion for ${file.path}:`, error);
+      Logger.error(`Failed to handle file deletion for ${file.path}`, "ProjectService", error);
     }
   }
   /**
@@ -2649,7 +3458,7 @@ SORT file.name
    */
   async updateSceneWordCount(scenePath) {
     const file = this.app.vault.getAbstractFileByPath(scenePath);
-    if (file instanceof import_obsidian.TFile) {
+    if (file instanceof import_obsidian2.TFile) {
       const content = await this.app.vault.read(file);
       const wordCount = this.calculateWordCount(content, file.path);
       const scene = this.sceneCache.get(scenePath);
@@ -3034,7 +3843,7 @@ tags: [scene]
 status: "outline"
 pov: ""
 location: ""
-story_time: ""
+story_time: 
 synopsis: ""
 word_count: 0
 chapter_index: 1
@@ -3185,7 +3994,7 @@ scene_index: 1
 };
 
 // src/modals/ProjectCreationModal.ts
-var import_obsidian2 = require("obsidian");
+var import_obsidian3 = require("obsidian");
 
 // src/services/ActivationService.ts
 var ActivationService = class {
@@ -3568,8 +4377,259 @@ var ActivationService = class {
   }
 };
 
+// src/utils/InputValidator.ts
+var InputValidator = class {
+  /**
+   * 验证项目名称
+   * Validate project name
+   */
+  static validateProjectName(name) {
+    const errors = [];
+    const warnings = [];
+    if (!name || name.trim().length === 0) {
+      errors.push("\u9879\u76EE\u540D\u79F0\u4E0D\u80FD\u4E3A\u7A7A");
+      return { isValid: false, errors, warnings };
+    }
+    if (name !== name.trim()) {
+      warnings.push("\u9879\u76EE\u540D\u79F0\u5F00\u5934\u6216\u7ED3\u5C3E\u5305\u542B\u7A7A\u683C\uFF0C\u5C06\u88AB\u81EA\u52A8\u53BB\u9664");
+    }
+    const trimmedName = name.trim();
+    if (trimmedName.length < this.MIN_PROJECT_NAME_LENGTH) {
+      errors.push(`\u9879\u76EE\u540D\u79F0\u957F\u5EA6\u4E0D\u80FD\u5C11\u4E8E ${this.MIN_PROJECT_NAME_LENGTH} \u4E2A\u5B57\u7B26`);
+    }
+    if (trimmedName.length > this.MAX_PROJECT_NAME_LENGTH) {
+      errors.push(`\u9879\u76EE\u540D\u79F0\u957F\u5EA6\u4E0D\u80FD\u8D85\u8FC7 ${this.MAX_PROJECT_NAME_LENGTH} \u4E2A\u5B57\u7B26`);
+    }
+    if (trimmedName.startsWith(".") || trimmedName.endsWith(".")) {
+      errors.push("\u9879\u76EE\u540D\u79F0\u4E0D\u80FD\u4EE5\u70B9\u53F7\u5F00\u5934\u6216\u7ED3\u5C3E");
+    }
+    const invalidChars = trimmedName.match(this.INVALID_FILENAME_CHARS);
+    if (invalidChars) {
+      const uniqueChars = [...new Set(invalidChars)].join(" ");
+      errors.push(`\u9879\u76EE\u540D\u79F0\u5305\u542B\u4E0D\u5141\u8BB8\u7684\u5B57\u7B26: ${uniqueChars}`);
+    }
+    const upperName = trimmedName.toUpperCase();
+    if (this.WINDOWS_RESERVED_NAMES.includes(upperName)) {
+      errors.push(`"${trimmedName}" \u662F\u7CFB\u7EDF\u4FDD\u7559\u540D\u79F0\uFF0C\u4E0D\u80FD\u4F7F\u7528`);
+    }
+    if (trimmedName.includes("..")) {
+      errors.push('\u9879\u76EE\u540D\u79F0\u4E0D\u80FD\u5305\u542B ".."');
+    }
+    if (/^[\d\s]+$/.test(trimmedName)) {
+      warnings.push("\u9879\u76EE\u540D\u79F0\u53EA\u5305\u542B\u6570\u5B57\u548C\u7A7A\u683C\uFF0C\u5EFA\u8BAE\u6DFB\u52A0\u63CF\u8FF0\u6027\u6587\u5B57");
+    }
+    return {
+      isValid: errors.length === 0,
+      errors,
+      warnings
+    };
+  }
+  /**
+   * 验证项目路径
+   * Validate project path
+   */
+  static validateProjectPath(path) {
+    const errors = [];
+    const warnings = [];
+    if (!path || path.trim().length === 0) {
+      errors.push("\u9879\u76EE\u8DEF\u5F84\u4E0D\u80FD\u4E3A\u7A7A");
+      return { isValid: false, errors, warnings };
+    }
+    if (path !== path.trim()) {
+      warnings.push("\u9879\u76EE\u8DEF\u5F84\u5F00\u5934\u6216\u7ED3\u5C3E\u5305\u542B\u7A7A\u683C\uFF0C\u5C06\u88AB\u81EA\u52A8\u53BB\u9664");
+    }
+    const trimmedPath = path.trim();
+    if (trimmedPath.length < this.MIN_PATH_LENGTH) {
+      errors.push(`\u9879\u76EE\u8DEF\u5F84\u957F\u5EA6\u4E0D\u80FD\u5C11\u4E8E ${this.MIN_PATH_LENGTH} \u4E2A\u5B57\u7B26`);
+    }
+    if (trimmedPath.length > this.MAX_PATH_LENGTH) {
+      errors.push(`\u9879\u76EE\u8DEF\u5F84\u957F\u5EA6\u4E0D\u80FD\u8D85\u8FC7 ${this.MAX_PATH_LENGTH} \u4E2A\u5B57\u7B26`);
+    }
+    if (trimmedPath.startsWith("/") || trimmedPath.startsWith("\\")) {
+      warnings.push("\u8DEF\u5F84\u4EE5\u5206\u9694\u7B26\u5F00\u5934\uFF0C\u5C06\u4F7F\u7528\u76F8\u5BF9\u8DEF\u5F84");
+    }
+    if (trimmedPath.includes("..")) {
+      errors.push('\u9879\u76EE\u8DEF\u5F84\u4E0D\u80FD\u5305\u542B ".."\uFF08\u4E0A\u7EA7\u76EE\u5F55\u5F15\u7528\uFF09');
+    }
+    const invalidChars = trimmedPath.match(this.INVALID_PATH_CHARS);
+    if (invalidChars) {
+      const uniqueChars = [...new Set(invalidChars)].join(" ");
+      errors.push(`\u9879\u76EE\u8DEF\u5F84\u5305\u542B\u4E0D\u5141\u8BB8\u7684\u5B57\u7B26: ${uniqueChars}`);
+    }
+    const pathParts = trimmedPath.split(/[/\\]/);
+    for (const part of pathParts) {
+      if (part) {
+        const partValidation = this.validatePathPart(part);
+        errors.push(...partValidation.errors);
+        warnings.push(...partValidation.warnings);
+      }
+    }
+    return {
+      isValid: errors.length === 0,
+      errors,
+      warnings
+    };
+  }
+  /**
+   * 验证路径部分
+   * Validate path part
+   */
+  static validatePathPart(part) {
+    const errors = [];
+    const warnings = [];
+    if (part.startsWith(".") || part.endsWith(".")) {
+      errors.push("\u8DEF\u5F84\u90E8\u5206\u4E0D\u80FD\u4EE5\u70B9\u53F7\u5F00\u5934\u6216\u7ED3\u5C3E");
+    }
+    if (part.startsWith(" ") || part.endsWith(" ")) {
+      warnings.push("\u8DEF\u5F84\u90E8\u5206\u5F00\u5934\u6216\u7ED3\u5C3E\u5305\u542B\u7A7A\u683C");
+    }
+    const upperPart = part.toUpperCase();
+    if (this.WINDOWS_RESERVED_NAMES.includes(upperPart)) {
+      errors.push(`"${part}" \u662F\u7CFB\u7EDF\u4FDD\u7559\u540D\u79F0\uFF0C\u4E0D\u80FD\u4F7F\u7528`);
+    }
+    return {
+      isValid: errors.length === 0,
+      errors,
+      warnings
+    };
+  }
+  /**
+   * 清理项目名称
+   * Sanitize project name
+   */
+  static sanitizeProjectName(name) {
+    if (!name)
+      return "";
+    let sanitized = name.trim().replace(this.INVALID_FILENAME_CHARS, "").replace(/\s+/g, "-").replace(/\.+/g, "-").replace(/-+/g, "-").replace(/^-+|-+$/g, "");
+    const upperSanitized = sanitized.toUpperCase();
+    if (this.WINDOWS_RESERVED_NAMES.includes(upperSanitized)) {
+      sanitized = `project-${sanitized}`;
+    }
+    if (sanitized.length > this.MAX_PROJECT_NAME_LENGTH) {
+      sanitized = sanitized.substring(0, this.MAX_PROJECT_NAME_LENGTH);
+    }
+    return sanitized;
+  }
+  /**
+   * 清理项目路径
+   * Sanitize project path
+   */
+  static sanitizeProjectPath(path) {
+    if (!path)
+      return "";
+    let sanitized = path.trim().replace(/\.\./g, "").replace(/\/+/g, "/").replace(/\\+/g, "/").replace(/^\/+|\/+$/g, "");
+    const pathParts = sanitized.split("/");
+    const sanitizedParts = pathParts.map((part) => {
+      if (!part)
+        return "";
+      let cleanPart = part.replace(this.INVALID_PATH_CHARS, "").replace(/\.+/g, "-").replace(/\s+/g, "-").replace(/-+/g, "-").replace(/^-+|-+$/g, "");
+      const upperPart = cleanPart.toUpperCase();
+      if (this.WINDOWS_RESERVED_NAMES.includes(upperPart)) {
+        cleanPart = `folder-${cleanPart}`;
+      }
+      return cleanPart;
+    });
+    sanitized = sanitizedParts.filter((p) => p).join("/");
+    if (sanitized.length > this.MAX_PATH_LENGTH) {
+      sanitized = sanitized.substring(0, this.MAX_PATH_LENGTH);
+    }
+    return sanitized;
+  }
+  /**
+   * 验证并清理项目名称
+   * Validate and sanitize project name
+   */
+  static validateAndSanitizeProjectName(name) {
+    const validation = this.validateProjectName(name);
+    const sanitizedName = validation.isValid ? name.trim() : this.sanitizeProjectName(name);
+    return {
+      validation,
+      sanitizedName
+    };
+  }
+  /**
+   * 验证并清理项目路径
+   * Validate and sanitize project path
+   */
+  static validateAndSanitizeProjectPath(path) {
+    const validation = this.validateProjectPath(path);
+    const sanitizedPath = validation.isValid ? path.trim() : this.sanitizeProjectPath(path);
+    return {
+      validation,
+      sanitizedPath
+    };
+  }
+  /**
+   * 检查字符串是否只包含安全字符
+   * Check if string contains only safe characters
+   */
+  static isSafeString(str) {
+    if (!str)
+      return true;
+    const safePattern = /^[\w\s\u4e00-\u9fa5\-_.]+$/;
+    return safePattern.test(str);
+  }
+  /**
+   * 获取安全的文件名
+   * Get safe filename
+   */
+  static getSafeFilename(filename) {
+    if (!filename)
+      return "untitled";
+    const parts = filename.split(".");
+    const hasExtension = parts.length > 1;
+    if (hasExtension) {
+      const extension = parts.pop();
+      const nameWithoutExt = parts.join(".");
+      const sanitizedName = nameWithoutExt.replace(this.INVALID_FILENAME_CHARS, "").replace(/\s+/g, "-").replace(/-+/g, "-").replace(/^-+|-+$/g, "");
+      const sanitizedExt = extension.replace(this.INVALID_FILENAME_CHARS, "").replace(/\s+/g, "-").replace(/-+/g, "-").replace(/^-+|-+$/g, "");
+      const result = sanitizedName && sanitizedExt ? `${sanitizedName}.${sanitizedExt}` : sanitizedName || sanitizedExt || "untitled";
+      return result || "untitled";
+    } else {
+      return filename.replace(this.INVALID_FILENAME_CHARS, "").replace(/\s+/g, "-").replace(/-+/g, "-").replace(/^-+|-+$/g, "") || "untitled";
+    }
+  }
+};
+/** 项目名称最大长度 */
+InputValidator.MAX_PROJECT_NAME_LENGTH = 100;
+/** 项目路径最大长度 */
+InputValidator.MAX_PATH_LENGTH = 260;
+/** 项目名称最小长度 */
+InputValidator.MIN_PROJECT_NAME_LENGTH = 1;
+/** 项目路径最小长度 */
+InputValidator.MIN_PATH_LENGTH = 1;
+/** Windows 保留名称 */
+InputValidator.WINDOWS_RESERVED_NAMES = [
+  "CON",
+  "PRN",
+  "AUX",
+  "NUL",
+  "COM1",
+  "COM2",
+  "COM3",
+  "COM4",
+  "COM5",
+  "COM6",
+  "COM7",
+  "COM8",
+  "COM9",
+  "LPT1",
+  "LPT2",
+  "LPT3",
+  "LPT4",
+  "LPT5",
+  "LPT6",
+  "LPT7",
+  "LPT8",
+  "LPT9"
+];
+/** 不允许的特殊字符（文件名中） */
+InputValidator.INVALID_FILENAME_CHARS = /[<>:"\/\\|?*\x00-\x1F]/g;
+/** 不允许的特殊字符（路径中，除了分隔符） */
+InputValidator.INVALID_PATH_CHARS = /[<>:"|?*\x00-\x1F]/g;
+
 // src/modals/ProjectCreationModal.ts
-var ProjectCreationModal = class extends import_obsidian2.Modal {
+var ProjectCreationModal = class extends import_obsidian3.Modal {
   constructor(app, projectService, activationService, settings, licenseType = "trial") {
     super(app);
     this.projectName = "";
@@ -3591,16 +4651,16 @@ var ProjectCreationModal = class extends import_obsidian2.Modal {
     if (ActivationService.isTrialVersion(this.licenseType)) {
       this.showTrialWarning(contentEl);
     }
-    new import_obsidian2.Setting(contentEl).setName("\u9879\u76EE\u540D\u79F0").setDesc("\u4E3A\u60A8\u7684\u5C0F\u8BF4\u9879\u76EE\u8D77\u4E00\u4E2A\u540D\u5B57").addText((text) => text.setPlaceholder("\u4F8B\u5982\uFF1A\u6211\u7684\u7B2C\u4E00\u90E8\u5C0F\u8BF4").setValue(this.projectName).onChange(async (value) => {
+    new import_obsidian3.Setting(contentEl).setName("\u9879\u76EE\u540D\u79F0").setDesc("\u4E3A\u60A8\u7684\u5C0F\u8BF4\u9879\u76EE\u8D77\u4E00\u4E2A\u540D\u5B57").addText((text) => text.setPlaceholder("\u4F8B\u5982\uFF1A\u6211\u7684\u7B2C\u4E00\u90E8\u5C0F\u8BF4").setValue(this.projectName).onChange(async (value) => {
       this.projectName = value;
       if (value && (!this.settings.defaultProjectPath || !this.projectPath)) {
         const basePath = this.settings.defaultProjectPath || "";
-        const sanitizedName = this.sanitizeProjectName(value);
+        const sanitizedName = InputValidator.sanitizeProjectName(value);
         this.projectPath = basePath ? `${basePath}/${sanitizedName}` : sanitizedName;
         this.updatePathDisplay();
       }
     }));
-    new import_obsidian2.Setting(contentEl).setName("\u9879\u76EE\u8DEF\u5F84").setDesc("\u9879\u76EE\u5C06\u5728\u6B64\u8DEF\u5F84\u4E0B\u521B\u5EFA\u6587\u4EF6\u5939\u7ED3\u6784" + (this.settings.defaultProjectPath ? ` (\u9ED8\u8BA4\u8DEF\u5F84: ${this.settings.defaultProjectPath})` : "")).addText((text) => text.setPlaceholder(this.settings.defaultProjectPath || "\u4F8B\u5982\uFF1A\u6211\u7684\u5C0F\u8BF4\u9879\u76EE").setValue(this.projectPath).onChange(async (value) => {
+    new import_obsidian3.Setting(contentEl).setName("\u9879\u76EE\u8DEF\u5F84").setDesc("\u9879\u76EE\u5C06\u5728\u6B64\u8DEF\u5F84\u4E0B\u521B\u5EFA\u6587\u4EF6\u5939\u7ED3\u6784" + (this.settings.defaultProjectPath ? ` (\u9ED8\u8BA4\u8DEF\u5F84: ${this.settings.defaultProjectPath})` : "")).addText((text) => text.setPlaceholder(this.settings.defaultProjectPath || "\u4F8B\u5982\uFF1A\u6211\u7684\u5C0F\u8BF4\u9879\u76EE").setValue(this.projectPath).onChange(async (value) => {
       this.projectPath = value;
     }));
     const structureEl = contentEl.createDiv("project-structure-info");
@@ -3638,49 +4698,44 @@ var ProjectCreationModal = class extends import_obsidian2.Modal {
     const { contentEl } = this;
     contentEl.empty();
   }
-  /**
-   * 清理项目名称，生成合适的路径
-   * Sanitize project name for path generation
-   */
-  sanitizeProjectName(name) {
-    return name.replace(/[^\w\s\u4e00-\u9fa5]/g, "").replace(/\s+/g, "-").toLowerCase();
-  }
-  /**
-   * 更新路径显示
-   * Update path display
-   */
   updatePathDisplay() {
     const pathInput = this.contentEl.querySelector('input[placeholder*="\u9879\u76EE\u8DEF\u5F84"]');
     if (pathInput) {
       pathInput.value = this.projectPath;
     }
   }
-  /**
-   * 创建项目
-   * Create the project
-   */
   async createProject() {
-    if (!this.projectName.trim()) {
-      new import_obsidian2.Notice("\u8BF7\u8F93\u5165\u9879\u76EE\u540D\u79F0");
+    const nameValidation = InputValidator.validateProjectName(this.projectName);
+    if (!nameValidation.isValid) {
+      new import_obsidian3.Notice(`\u9879\u76EE\u540D\u79F0\u65E0\u6548: ${nameValidation.errors[0]}`);
       return;
     }
-    if (!this.projectPath.trim()) {
-      new import_obsidian2.Notice("\u8BF7\u8F93\u5165\u9879\u76EE\u8DEF\u5F84");
+    if (nameValidation.warnings.length > 0) {
+      console.warn("\u9879\u76EE\u540D\u79F0\u8B66\u544A:", nameValidation.warnings.join(", "));
+    }
+    const pathValidation = InputValidator.validateProjectPath(this.projectPath);
+    if (!pathValidation.isValid) {
+      new import_obsidian3.Notice(`\u9879\u76EE\u8DEF\u5F84\u65E0\u6548: ${pathValidation.errors[0]}`);
       return;
     }
+    if (pathValidation.warnings.length > 0) {
+      console.warn("\u9879\u76EE\u8DEF\u5F84\u8B66\u544A:", pathValidation.warnings.join(", "));
+    }
+    const sanitizedName = InputValidator.sanitizeProjectName(this.projectName);
+    const sanitizedPath = InputValidator.sanitizeProjectPath(this.projectPath);
     try {
-      new import_obsidian2.Notice("\u6B63\u5728\u521B\u5EFA\u9879\u76EE...");
-      await this.projectService.createProject(this.projectName.trim(), this.projectPath.trim());
-      new import_obsidian2.Notice(`\u9879\u76EE "${this.projectName}" \u521B\u5EFA\u6210\u529F\uFF01`);
+      new import_obsidian3.Notice("\u6B63\u5728\u521B\u5EFA\u9879\u76EE...");
+      await this.projectService.createProject(sanitizedName, sanitizedPath);
+      new import_obsidian3.Notice(`\u9879\u76EE "${sanitizedName}" \u521B\u5EFA\u6210\u529F\uFF01`);
       this.close();
-      const dashboardPath = `${this.projectPath.trim()}/_project.md`;
+      const dashboardPath = `${sanitizedPath}/_project.md`;
       const dashboardFile = this.app.vault.getAbstractFileByPath(dashboardPath);
       if (dashboardFile) {
         await this.app.workspace.openLinkText(dashboardPath, "", false);
       }
     } catch (error) {
       console.error("Failed to create project:", error);
-      new import_obsidian2.Notice(`\u521B\u5EFA\u9879\u76EE\u5931\u8D25: ${error.message}`);
+      new import_obsidian3.Notice(`\u521B\u5EFA\u9879\u76EE\u5931\u8D25: ${error.message}`);
     }
   }
   /**
@@ -3842,7 +4897,7 @@ var ProjectCreationModal = class extends import_obsidian2.Modal {
       this.app.setting.openTabById("story-weaver-plugin");
     } catch (error) {
       console.error("Failed to open settings:", error);
-      new import_obsidian2.Notice("\u65E0\u6CD5\u6253\u5F00\u8BBE\u7F6E\u9875\u9762\uFF0C\u8BF7\u624B\u52A8\u524D\u5F80\u8BBE\u7F6E > \u63D2\u4EF6\u9009\u9879 > Story Weaver");
+      new import_obsidian3.Notice("\u65E0\u6CD5\u6253\u5F00\u8BBE\u7F6E\u9875\u9762\uFF0C\u8BF7\u624B\u52A8\u524D\u5F80\u8BBE\u7F6E > \u63D2\u4EF6\u9009\u9879 > Story Weaver");
     }
   }
   /**
@@ -3903,8 +4958,8 @@ var ProjectCreationModal = class extends import_obsidian2.Modal {
 };
 
 // src/services/DashboardRenderer.ts
-var import_obsidian3 = require("obsidian");
-var DashboardRenderer = class extends import_obsidian3.Component {
+var import_obsidian4 = require("obsidian");
+var DashboardRenderer = class extends import_obsidian4.Component {
   constructor(app, projectService) {
     super();
     this.app = app;
@@ -4003,6 +5058,15 @@ var DashboardRenderer = class extends import_obsidian3.Component {
         content = content.replace(/\{\{PROJECT_STATUS\}\}/g, statusDisplay);
         if (content.includes("{{PROJECT_STATUS_SWITCHER}}")) {
           content = content.replace(/\{\{PROJECT_STATUS_SWITCHER\}\}/g, "");
+          textNode.textContent = content;
+          const switcherPlaceholder = document.createElement("div");
+          switcherPlaceholder.className = "project-status-switcher-placeholder";
+          switcherPlaceholder.setAttribute("data-switcher", "true");
+          const parent = textNode.parentNode;
+          if (parent) {
+            parent.insertBefore(switcherPlaceholder, textNode.nextSibling);
+          }
+          return;
         }
         if (content.includes("{{CHAPTER_STATISTICS}}")) {
           const chapterStatsHtml = this.generateChapterStatisticsTable();
@@ -4029,56 +5093,23 @@ var DashboardRenderer = class extends import_obsidian3.Component {
    * Render status switcher
    */
   renderStatusSwitcher(element) {
-    var _a, _b;
     try {
       const project = this.projectService.currentProject;
       if (!project)
         return;
-      const walker = document.createTreeWalker(
-        element,
-        NodeFilter.SHOW_TEXT,
-        null
-      );
-      let statusSection = null;
-      let node;
-      while (node = walker.nextNode()) {
-        if (node.textContent && node.textContent.includes("\u9879\u76EE\u72B6\u6001")) {
-          let parent = node.parentElement;
-          while (parent && parent !== element) {
-            if (parent.tagName === "H3" || parent.tagName === "DIV" || parent.tagName === "SECTION") {
-              statusSection = parent.parentElement || parent;
-              break;
-            }
-            parent = parent.parentElement;
-          }
-          if (!statusSection) {
-            statusSection = node.parentElement;
-          }
-          break;
-        }
-      }
-      if (!statusSection) {
-        console.warn("\u26A0\uFE0F Status section not found, trying alternative approach...");
-        const headings = element.querySelectorAll("h3");
-        for (const heading of headings) {
-          if (((_a = heading.textContent) == null ? void 0 : _a.includes("\u9879\u76EE\u72B6\u6001")) || ((_b = heading.textContent) == null ? void 0 : _b.includes("\u5199\u4F5C\u8FDB\u5EA6"))) {
-            statusSection = heading.parentElement || heading;
-            console.log("\u2705 Found status section via heading search");
-            break;
-          }
-        }
-      }
-      if (!statusSection) {
-        console.error("\u274C Could not find status section");
+      const switcherPlaceholder = element.querySelector('.project-status-switcher-placeholder[data-switcher="true"]');
+      if (!switcherPlaceholder) {
+        console.log("\u2139\uFE0F Status switcher placeholder not found (may already be rendered or not in template)");
         return;
       }
-      console.log("\u2705 Status section found, rendering switcher...");
-      const existingSwitcher = statusSection.querySelector(".status-switcher");
+      console.log("\u2705 Status switcher placeholder found, rendering switcher...");
+      const existingSwitcher = switcherPlaceholder.querySelector(".status-switcher");
       if (existingSwitcher) {
         console.log("\u{1F504} Removing existing status switcher...");
         existingSwitcher.remove();
       }
-      const switcherContainer = this.createElement("div", "status-switcher", statusSection);
+      switcherPlaceholder.removeAttribute("data-switcher");
+      const switcherContainer = this.createElement("div", "status-switcher", switcherPlaceholder);
       switcherContainer.style.cssText = `
         margin: 15px 0;
         padding: 15px;
@@ -4688,7 +5719,7 @@ var DashboardRenderer = class extends import_obsidian3.Component {
     if (activeFile && this.isProjectDashboard(activeFile.path)) {
       setTimeout(() => {
         this.app.workspace.trigger("layout-change");
-        const activeLeaf = this.app.workspace.getActiveViewOfType(import_obsidian3.MarkdownView);
+        const activeLeaf = this.app.workspace.getActiveViewOfType(import_obsidian4.MarkdownView);
         if (activeLeaf) {
           activeLeaf.previewMode.rerender(true);
         }
@@ -5070,7 +6101,7 @@ var DashboardRenderer = class extends import_obsidian3.Component {
 };
 
 // src/services/ImmersiveWritingService.ts
-var import_obsidian4 = require("obsidian");
+var import_obsidian5 = require("obsidian");
 var ImmersiveWritingService = class {
   constructor(app, projectService) {
     /** 当前合并的章节数据 */
@@ -5081,10 +6112,11 @@ var ImmersiveWritingService = class {
     this.sceneContentMap = /* @__PURE__ */ new Map();
     /** 编辑监听器 */
     this.editListeners = [];
-    /** 上次检查的内容哈希 */
     this.lastContentHash = "";
-    /** 同步状态 */
     this.isSyncing = false;
+    this.syncVersion = 0;
+    this.lastSyncTime = 0;
+    this.pendingSyncPromise = null;
     this.syncTimeout = null;
     this.app = app;
     this.projectService = projectService;
@@ -5111,7 +6143,7 @@ var ImmersiveWritingService = class {
       await this.buildSceneContentMap(scenes, mergedContent);
       return mergedContent;
     } catch (error) {
-      console.error("Failed to merge chapter for reading:", error);
+      Logger.error("Failed to merge chapter for reading", "ImmersiveWritingService", error);
       throw error;
     }
   }
@@ -5132,14 +6164,14 @@ var ImmersiveWritingService = class {
       const tempFile = await this.app.vault.create(tempFilePath, mergedContent);
       const leaf = this.app.workspace.getLeaf(true);
       await leaf.openFile(tempFile);
-      if (leaf.view instanceof import_obsidian4.MarkdownView) {
+      if (leaf.view instanceof import_obsidian5.MarkdownView) {
         this.virtualEditor = leaf.view.editor;
         this.setupEditListeners(leaf);
         this.addDocumentHeader(leaf);
       }
-      console.log(`Merged chapter opened for editing: ${chapterPath}`);
+      Logger.info(`Merged chapter opened for editing: ${chapterPath}`, "ImmersiveWritingService");
     } catch (error) {
-      console.error("Failed to open merged chapter editor:", error);
+      Logger.error("Failed to open merged chapter editor", "ImmersiveWritingService", error);
       throw error;
     }
   }
@@ -5176,7 +6208,7 @@ var ImmersiveWritingService = class {
     for (const scene of scenes) {
       const file = this.app.vault.getAbstractFileByPath(scene.path);
       if (!file) {
-        console.warn(`Scene file not found: ${scene.path}`);
+        Logger.warn(`Scene file not found: ${scene.path}`, "ImmersiveWritingService");
         continue;
       }
       try {
@@ -5193,7 +6225,7 @@ var ImmersiveWritingService = class {
 
 `);
       } catch (error) {
-        console.error(`Failed to read scene file: ${scene.path}`, error);
+        Logger.error(`Failed to read scene file: ${scene.path}`, "ImmersiveWritingService", error);
         contentParts.push(`<!-- ERROR: Failed to load scene ${scene.path} -->
 
 `);
@@ -5230,12 +6262,24 @@ var ImmersiveWritingService = class {
       const sceneEndMatch = line.match(/<!-- SCENE_END: (.+) -->/);
       if (sceneEndMatch && currentScenePath === sceneEndMatch[1]) {
         sceneEndLine = i;
-        this.sceneContentMap.set(currentScenePath, {
-          scenePath: currentScenePath,
+        const scenePath = currentScenePath;
+        const originalContent = lines.slice(sceneStartLine + 2, sceneEndLine).join("\n");
+        let originalFileHash;
+        try {
+          const file = this.app.vault.getAbstractFileByPath(scenePath);
+          if (file) {
+            const fileContent = await this.app.vault.read(file);
+            originalFileHash = this.hashContent(fileContent);
+          }
+        } catch (error) {
+          Logger.warn(`Failed to read file for hash: ${scenePath}`, "ImmersiveWritingService");
+        }
+        this.sceneContentMap.set(scenePath, {
+          scenePath,
           startLine: sceneStartLine,
           endLine: sceneEndLine,
-          originalContent: lines.slice(sceneStartLine + 2, sceneEndLine).join("\n")
-          // 跳过标题行
+          originalContent,
+          originalFileHash
         });
         currentScenePath = null;
         sceneStartLine = -1;
@@ -5251,38 +6295,46 @@ var ImmersiveWritingService = class {
     if (!this.virtualEditor)
       return;
     this.updateContentHash();
+    let lastCheckTime = Date.now();
+    const checkInterval = 2e3;
     const checkForChanges = () => {
-      if (this.hasContentChanged()) {
-        this.debounceSync(() => {
-          this.syncChangesToSourceFiles();
-        }, 1e3);
+      if (!this.virtualEditor || !this.currentMergedChapter) {
+        return;
+      }
+      const now = Date.now();
+      if (now - lastCheckTime >= checkInterval) {
+        lastCheckTime = now;
+        if (this.hasContentChanged()) {
+          this.debounceSync(() => {
+            this.syncChangesToSourceFiles();
+          }, 1e3);
+        }
       }
     };
-    const changeCheckInterval = setInterval(checkForChanges, 1e3);
+    const intervalId = setInterval(checkForChanges, checkInterval);
     this.editListeners.push(() => {
-      clearInterval(changeCheckInterval);
+      clearInterval(intervalId);
     });
-    const activeLeafChangeListener = (activeLeaf) => {
+    const activeLeafChangeRef = this.app.workspace.on("active-leaf-change", (activeLeaf) => {
       if (activeLeaf !== leaf) {
         this.syncChangesToSourceFiles().finally(() => {
           this.cleanupMergedSession();
         });
       }
-    };
-    this.app.workspace.on("active-leaf-change", activeLeafChangeListener);
-    this.editListeners.push(() => {
-      this.app.workspace.off("active-leaf-change", activeLeafChangeListener);
     });
-    const saveListener = () => {
-      this.syncChangesToSourceFiles();
-    };
-    const saveCheckInterval = setInterval(() => {
-      if (this.virtualEditor && this.hasContentChanged()) {
-        this.debounceSync(saveListener, 500);
-      }
-    }, 500);
     this.editListeners.push(() => {
-      clearInterval(saveCheckInterval);
+      this.app.workspace.offref(activeLeafChangeRef);
+    });
+    const vaultModifyRef = this.app.vault.on("modify", (file) => {
+      if (this.currentMergedChapter && file.path.includes("_merged_")) {
+        Logger.debug("Merged file modified, syncing changes", "ImmersiveWritingService");
+        this.debounceSync(() => {
+          this.syncChangesToSourceFiles();
+        }, 500);
+      }
+    });
+    this.editListeners.push(() => {
+      this.app.vault.offref(vaultModifyRef);
     });
   }
   /**
@@ -5290,32 +6342,72 @@ var ImmersiveWritingService = class {
    * Sync changes to source files
    */
   async syncChangesToSourceFiles() {
-    if (!this.virtualEditor || !this.currentMergedChapter || this.isSyncing) {
+    if (!this.virtualEditor || !this.currentMergedChapter) {
+      return;
+    }
+    if (this.pendingSyncPromise) {
+      await this.pendingSyncPromise;
+    }
+    const currentVersion = ++this.syncVersion;
+    const now = Date.now();
+    if (now - this.lastSyncTime < 300 && this.isSyncing) {
+      Logger.debug("Sync debounced due to recent sync", "ImmersiveWritingService");
       return;
     }
     this.isSyncing = true;
+    this.lastSyncTime = now;
     try {
-      const currentContent = this.virtualEditor.getValue();
-      const lines = currentContent.split("\n");
-      await this.rebuildSceneContentMap(currentContent);
-      for (const [scenePath, contentInfo] of this.sceneContentMap.entries()) {
+      this.pendingSyncPromise = this.performSync(currentVersion);
+      await this.pendingSyncPromise;
+    } catch (error) {
+      Logger.error("Failed to sync changes to source files", "ImmersiveWritingService", error);
+    } finally {
+      this.isSyncing = false;
+      this.pendingSyncPromise = null;
+    }
+  }
+  async performSync(version) {
+    if (version !== this.syncVersion) {
+      Logger.debug(`Sync version mismatch: ${version} vs ${this.syncVersion}, aborting`, "ImmersiveWritingService");
+      return;
+    }
+    const currentContent = this.virtualEditor.getValue();
+    const lines = currentContent.split("\n");
+    await this.rebuildSceneContentMap(currentContent);
+    const conflicts = [];
+    for (const [scenePath, contentInfo] of this.sceneContentMap.entries()) {
+      try {
         const currentSceneContent = lines.slice(
           contentInfo.startLine + 2,
-          // 跳过场景标记和标题
           contentInfo.endLine
         ).join("\n");
         if (currentSceneContent !== contentInfo.originalContent) {
+          const file = this.app.vault.getAbstractFileByPath(scenePath);
+          if (!file) {
+            conflicts.push({ scenePath, reason: "File not found" });
+            continue;
+          }
+          const fileContent = await this.app.vault.read(file);
+          const fileContentHash = this.hashContent(fileContent);
+          if (contentInfo.originalFileHash && fileContentHash !== contentInfo.originalFileHash) {
+            conflicts.push({ scenePath, reason: "File was modified externally" });
+            Logger.warn(`Conflict detected for ${scenePath}: file was modified externally`, "ImmersiveWritingService");
+            continue;
+          }
           await this.updateSceneFile(scenePath, currentSceneContent);
           contentInfo.originalContent = currentSceneContent;
-          console.log(`Synced changes to scene: ${scenePath}`);
+          contentInfo.originalFileHash = this.hashContent(await this.app.vault.read(file));
+          Logger.debug(`Synced changes to scene: ${scenePath}`, "ImmersiveWritingService");
         }
+      } catch (error) {
+        Logger.error(`Failed to sync scene ${scenePath}`, "ImmersiveWritingService", error);
+        conflicts.push({ scenePath, reason: error.message });
       }
-      this.updateContentHash();
-    } catch (error) {
-      console.error("Failed to sync changes to source files:", error);
-    } finally {
-      this.isSyncing = false;
     }
+    if (conflicts.length > 0) {
+      Logger.warn(`Sync completed with ${conflicts.length} conflicts`, "ImmersiveWritingService");
+    }
+    this.updateContentHash();
   }
   /**
    * 更新场景文件内容
@@ -5325,7 +6417,7 @@ var ImmersiveWritingService = class {
     try {
       const file = this.app.vault.getAbstractFileByPath(scenePath);
       if (!file) {
-        console.error(`Scene file not found: ${scenePath}`);
+        Logger.error(`Scene file not found: ${scenePath}`, "ImmersiveWritingService");
         return;
       }
       const originalContent = await this.app.vault.read(file);
@@ -5336,10 +6428,10 @@ var ImmersiveWritingService = class {
       if (updatedContent !== originalContent) {
         await this.app.vault.modify(file, updatedContent);
         await this.updateSceneWordCount(scenePath, cleanedContent);
-        console.log(`Scene file updated: ${scenePath}`);
+        Logger.debug(`Scene file updated: ${scenePath}`, "ImmersiveWritingService");
       }
     } catch (error) {
-      console.error(`Failed to update scene file: ${scenePath}`, error);
+      Logger.error(`Failed to update scene file: ${scenePath}`, "ImmersiveWritingService", error);
       throw error;
     }
   }
@@ -5360,7 +6452,7 @@ var ImmersiveWritingService = class {
         }
       });
     } catch (error) {
-      console.warn(`Failed to update word count for scene: ${scenePath}`, error);
+      Logger.warn(`Failed to update word count for scene: ${scenePath}`, "ImmersiveWritingService");
     }
   }
   /**
@@ -5371,7 +6463,7 @@ var ImmersiveWritingService = class {
     if (!this.currentMergedChapter)
       return;
     const headerInfo = `\u5408\u5E76\u7AE0\u8282\u7F16\u8F91\u6A21\u5F0F - ${this.currentMergedChapter.scenes.length} \u4E2A\u573A\u666F`;
-    console.log(headerInfo);
+    Logger.debug(headerInfo, "ImmersiveWritingService");
     this.addSyncStatusIndicator(leaf);
   }
   /**
@@ -5426,15 +6518,38 @@ var ImmersiveWritingService = class {
       if (tempFile) {
         try {
           this.app.vault.delete(tempFile);
+          Logger.debug(`Temporary file deleted: ${tempFilePath}`, "ImmersiveWritingService");
         } catch (error) {
-          console.warn("Failed to delete temporary file:", error);
+          Logger.warn(`Failed to delete temporary file: ${tempFilePath}`, "ImmersiveWritingService");
         }
       }
     }
     this.currentMergedChapter = null;
     this.virtualEditor = null;
     this.sceneContentMap.clear();
-    console.log("Merged session cleaned up");
+    this.syncVersion = 0;
+    this.lastSyncTime = 0;
+    this.pendingSyncPromise = null;
+    Logger.info("Merged session cleaned up", "ImmersiveWritingService");
+  }
+  async cleanupAllTempFiles() {
+    if (!this.projectService.currentProject) {
+      return;
+    }
+    const projectPath = this.projectService.currentProject.rootPath;
+    const files = this.app.vault.getFiles();
+    const tempFiles = files.filter(
+      (file) => file.path.startsWith(projectPath) && file.path.includes("_merged_") && file.path.endsWith(".md")
+    );
+    for (const file of tempFiles) {
+      try {
+        await this.app.vault.delete(file);
+        Logger.debug(`Cleaned up temporary file: ${file.path}`, "ImmersiveWritingService");
+      } catch (error) {
+        Logger.warn(`Failed to delete temporary file: ${file.path}`, "ImmersiveWritingService");
+      }
+    }
+    Logger.info(`Cleaned up ${tempFiles.length} temporary files`, "ImmersiveWritingService");
   }
   /**
    * 移除 frontmatter
@@ -5527,7 +6642,7 @@ var ImmersiveWritingService = class {
 };
 
 // src/views/SceneInfoPanel.ts
-var import_obsidian5 = require("obsidian");
+var import_obsidian6 = require("obsidian");
 
 // src/services/SuggestionHelper.ts
 var SuggestionHelper = class {
@@ -5852,7 +6967,7 @@ var SuggestionHelper = class {
 };
 
 // src/views/SceneInfoPanel.ts
-var _SceneInfoPanel = class extends import_obsidian5.ItemView {
+var _SceneInfoPanel = class extends import_obsidian6.ItemView {
   constructor(leaf, projectService) {
     super(leaf);
     /** 当前场景数据 */
@@ -6003,7 +7118,7 @@ var _SceneInfoPanel = class extends import_obsidian5.ItemView {
   renderTitleField() {
     if (!this.formContainer || !this.currentScene)
       return;
-    const setting = new import_obsidian5.Setting(this.formContainer).setName("\u573A\u666F\u6807\u9898").setDesc("\u573A\u666F\u7684\u6807\u9898").addText((text) => {
+    const setting = new import_obsidian6.Setting(this.formContainer).setName("\u573A\u666F\u6807\u9898").setDesc("\u573A\u666F\u7684\u6807\u9898").addText((text) => {
       var _a;
       text.setPlaceholder("\u8F93\u5165\u573A\u666F\u6807\u9898").setValue(((_a = this.currentScene) == null ? void 0 : _a.title) || "").onChange(async (value) => {
         const validation = this.suggestionHelper.validateSceneTitle(value);
@@ -6022,7 +7137,7 @@ var _SceneInfoPanel = class extends import_obsidian5.ItemView {
   renderStatusField() {
     if (!this.formContainer || !this.currentScene)
       return;
-    new import_obsidian5.Setting(this.formContainer).setName("\u573A\u666F\u72B6\u6001").setDesc("\u5F53\u524D\u573A\u666F\u7684\u5B8C\u6210\u72B6\u6001").addDropdown((dropdown) => {
+    new import_obsidian6.Setting(this.formContainer).setName("\u573A\u666F\u72B6\u6001").setDesc("\u5F53\u524D\u573A\u666F\u7684\u5B8C\u6210\u72B6\u6001").addDropdown((dropdown) => {
       var _a;
       dropdown.addOption("outline", "\u5927\u7EB2").addOption("draft", "\u8349\u7A3F").addOption("revised", "\u4FEE\u6539").addOption("complete", "\u5B8C\u6210").setValue(((_a = this.currentScene) == null ? void 0 : _a.status) || "outline").onChange(async (value) => {
         await this.updateSceneField("status", value);
@@ -6036,7 +7151,7 @@ var _SceneInfoPanel = class extends import_obsidian5.ItemView {
   renderPovField() {
     if (!this.formContainer || !this.currentScene)
       return;
-    const setting = new import_obsidian5.Setting(this.formContainer).setName("\u89C6\u89D2\u89D2\u8272").setDesc("\u573A\u666F\u7684\u89C6\u89D2\u89D2\u8272").addText((text) => {
+    const setting = new import_obsidian6.Setting(this.formContainer).setName("\u89C6\u89D2\u89D2\u8272").setDesc("\u573A\u666F\u7684\u89C6\u89D2\u89D2\u8272").addText((text) => {
       var _a;
       text.setPlaceholder("\u9009\u62E9\u6216\u8F93\u5165\u89D2\u8272\u540D\u79F0").setValue(((_a = this.currentScene) == null ? void 0 : _a.pov) || "").onChange(async (value) => {
         const validation = this.suggestionHelper.validateCharacterReference(value);
@@ -6056,7 +7171,7 @@ var _SceneInfoPanel = class extends import_obsidian5.ItemView {
   renderLocationField() {
     if (!this.formContainer || !this.currentScene)
       return;
-    const setting = new import_obsidian5.Setting(this.formContainer).setName("\u53D1\u751F\u5730\u70B9").setDesc("\u573A\u666F\u53D1\u751F\u7684\u5730\u70B9").addText((text) => {
+    const setting = new import_obsidian6.Setting(this.formContainer).setName("\u53D1\u751F\u5730\u70B9").setDesc("\u573A\u666F\u53D1\u751F\u7684\u5730\u70B9").addText((text) => {
       var _a;
       text.setPlaceholder("\u9009\u62E9\u6216\u8F93\u5165\u5730\u70B9\u540D\u79F0").setValue(((_a = this.currentScene) == null ? void 0 : _a.location) || "").onChange(async (value) => {
         const validation = this.suggestionHelper.validateLocationReference(value);
@@ -6077,18 +7192,42 @@ var _SceneInfoPanel = class extends import_obsidian5.ItemView {
     var _a;
     if (!this.formContainer || !this.currentScene)
       return;
-    const timeValue = ((_a = this.currentScene) == null ? void 0 : _a.storyTime) ? this.formatDateTime(this.currentScene.storyTime) : "";
-    const setting = new import_obsidian5.Setting(this.formContainer).setName("\u6545\u4E8B\u65F6\u95F4").setDesc("\u573A\u666F\u5728\u6545\u4E8B\u4E2D\u53D1\u751F\u7684\u65F6\u95F4").addText((text) => {
-      text.setPlaceholder("YYYY-MM-DD HH:mm").setValue(timeValue).onChange(async (value) => {
-        const validation = this.suggestionHelper.validateStoryTime(value);
-        this.updateFieldValidation("storyTime", text.inputEl, validation);
-        if (validation.isValid) {
-          const date = validation.parsedDate || null;
-          await this.updateSceneField("storyTime", date);
+    const timeValue = ((_a = this.currentScene) == null ? void 0 : _a.storyTime) ? this.formatDateForInput(this.currentScene.storyTime) : "";
+    const setting = new import_obsidian6.Setting(this.formContainer).setName("\u6545\u4E8B\u65F6\u95F4").setDesc("\u573A\u666F\u5728\u6545\u4E8B\u4E2D\u53D1\u751F\u7684\u65F6\u95F4\uFF08\u65E5\u671F\u683C\u5F0F\uFF09").addText((text) => {
+      text.inputEl.type = "date";
+      text.setValue(timeValue).onChange(async (value) => {
+        if (!value) {
+          await this.updateSceneField("storyTime", null);
+          return;
+        }
+        const parsedDate = this.parseDateFromInput(value);
+        if (parsedDate) {
+          await this.updateSceneField("storyTime", parsedDate);
+        } else {
+          this.showErrorMessage("\u65E5\u671F\u683C\u5F0F\u65E0\u6548");
         }
       });
     });
     this.addValidationMessage(setting.settingEl, "storyTime");
+  }
+  formatDateForInput(date) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  }
+  parseDateFromInput(value) {
+    const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (match) {
+      const year = parseInt(match[1]);
+      const month = parseInt(match[2]) - 1;
+      const day = parseInt(match[3]);
+      const date = new Date(year, month, day);
+      if (!isNaN(date.getTime())) {
+        return date;
+      }
+    }
+    return null;
   }
   /**
    * 渲染梗概字段
@@ -6097,7 +7236,7 @@ var _SceneInfoPanel = class extends import_obsidian5.ItemView {
   renderSynopsisField() {
     if (!this.formContainer || !this.currentScene)
       return;
-    const setting = new import_obsidian5.Setting(this.formContainer).setName("\u4E00\u53E5\u8BDD\u6897\u6982").setDesc("\u573A\u666F\u7684\u7B80\u8981\u63CF\u8FF0").addTextArea((text) => {
+    const setting = new import_obsidian6.Setting(this.formContainer).setName("\u4E00\u53E5\u8BDD\u6897\u6982").setDesc("\u573A\u666F\u7684\u7B80\u8981\u63CF\u8FF0").addTextArea((text) => {
       var _a;
       text.setPlaceholder("\u8F93\u5165\u573A\u666F\u6897\u6982").setValue(((_a = this.currentScene) == null ? void 0 : _a.synopsis) || "").onChange(async (value) => {
         const validation = this.suggestionHelper.validateSceneSynopsis(value);
@@ -6117,7 +7256,7 @@ var _SceneInfoPanel = class extends import_obsidian5.ItemView {
   renderWordCountField() {
     if (!this.formContainer || !this.currentScene)
       return;
-    new import_obsidian5.Setting(this.formContainer).setName("\u5B57\u6570\u7EDF\u8BA1").setDesc("\u5F53\u524D\u573A\u666F\u7684\u5B57\u6570").addText((text) => {
+    new import_obsidian6.Setting(this.formContainer).setName("\u5B57\u6570\u7EDF\u8BA1").setDesc("\u5F53\u524D\u573A\u666F\u7684\u5B57\u6570").addText((text) => {
       var _a, _b;
       text.setValue(((_b = (_a = this.currentScene) == null ? void 0 : _a.wordCount) == null ? void 0 : _b.toString()) || "0").setDisabled(true);
     });
@@ -6131,7 +7270,7 @@ var _SceneInfoPanel = class extends import_obsidian5.ItemView {
     if (!this.formContainer || !this.currentScene)
       return;
     const tagsValue = ((_b = (_a = this.currentScene) == null ? void 0 : _a.tags) == null ? void 0 : _b.join(", ")) || "";
-    new import_obsidian5.Setting(this.formContainer).setName("\u6807\u7B7E").setDesc("\u573A\u666F\u6807\u7B7E\uFF0C\u7528\u9017\u53F7\u5206\u9694").addText((text) => {
+    new import_obsidian6.Setting(this.formContainer).setName("\u6807\u7B7E").setDesc("\u573A\u666F\u6807\u7B7E\uFF0C\u7528\u9017\u53F7\u5206\u9694").addText((text) => {
       text.setPlaceholder("\u6807\u7B7E1, \u6807\u7B7E2, \u6807\u7B7E3").setValue(tagsValue).onChange(async (value) => {
         const tags = value.split(",").map((tag) => tag.trim()).filter((tag) => tag);
         await this.updateSceneField("tags", tags);
@@ -6263,8 +7402,8 @@ var SceneInfoPanel = _SceneInfoPanel;
 SceneInfoPanel.VIEW_TYPE = "story-weaver-scene-info";
 
 // src/views/OutlineView.ts
-var import_obsidian6 = require("obsidian");
-var _OutlineView = class extends import_obsidian6.ItemView {
+var import_obsidian7 = require("obsidian");
+var _OutlineView = class extends import_obsidian7.ItemView {
   constructor(leaf, projectService) {
     super(leaf);
     /** 当前渲染的大纲数据 */
@@ -6273,6 +7412,12 @@ var _OutlineView = class extends import_obsidian6.ItemView {
     this.isDragging = false;
     this.draggedElement = null;
     this.draggedSceneData = null;
+    /** 渲染防抖定时器 */
+    this.renderDebounceTimer = null;
+    /** 上次渲染的场景数量，用于智能刷新 */
+    this.lastRenderedSceneCount = 0;
+    /** 是否需要强制刷新 */
+    this.needsForceRefresh = false;
     this.projectService = projectService;
   }
   /**
@@ -6317,11 +7462,46 @@ var _OutlineView = class extends import_obsidian6.ItemView {
     this.cleanup();
   }
   /**
-   * 刷新大纲视图
-   * Refresh outline view
+   * 刷新视图
+   * Refresh view with debounce and smart update
    */
   refresh() {
+    this.debouncedRender();
+  }
+  /**
+   * 强制刷新视图（忽略防抖）
+   * Force refresh view (ignore debounce)
+   */
+  forceRefresh() {
+    this.needsForceRefresh = true;
     this.renderOutline();
+  }
+  /**
+   * 防抖渲染
+   * Debounced render
+   */
+  debouncedRender() {
+    if (this.renderDebounceTimer) {
+      clearTimeout(this.renderDebounceTimer);
+    }
+    this.renderDebounceTimer = setTimeout(() => {
+      this.smartRender();
+    }, 100);
+  }
+  /**
+   * 智能渲染（只在必要时更新）
+   * Smart render (only update when necessary)
+   */
+  smartRender() {
+    const currentSceneCount = this.projectService.getAllScenes().length;
+    if (this.needsForceRefresh || currentSceneCount !== this.lastRenderedSceneCount) {
+      console.log(`OutlineView: Rendering (${this.lastRenderedSceneCount} -> ${currentSceneCount} scenes)`);
+      this.renderOutline();
+      this.lastRenderedSceneCount = currentSceneCount;
+      this.needsForceRefresh = false;
+    } else {
+      console.log("OutlineView: Skipping render (no changes detected)");
+    }
   }
   /**
    * 处理项目变更
@@ -6329,6 +7509,8 @@ var _OutlineView = class extends import_obsidian6.ItemView {
    */
   onProjectChanged() {
     this.outlineData = [];
+    this.lastRenderedSceneCount = 0;
+    this.needsForceRefresh = true;
     this.renderOutline();
   }
   /**
@@ -7048,10 +8230,16 @@ var _OutlineView = class extends import_obsidian6.ItemView {
    * Cleanup resources
    */
   cleanup() {
+    if (this.renderDebounceTimer) {
+      clearTimeout(this.renderDebounceTimer);
+      this.renderDebounceTimer = null;
+    }
     this.isDragging = false;
     this.draggedElement = null;
     this.draggedSceneData = null;
     this.outlineData = [];
+    this.lastRenderedSceneCount = 0;
+    this.needsForceRefresh = false;
   }
 };
 var OutlineView = _OutlineView;
@@ -7059,8 +8247,8 @@ var OutlineView = _OutlineView;
 OutlineView.VIEW_TYPE = "story-weaver-outline";
 
 // src/views/TimelineView.ts
-var import_obsidian7 = require("obsidian");
-var _TimelineView = class extends import_obsidian7.ItemView {
+var import_obsidian8 = require("obsidian");
+var _TimelineView = class extends import_obsidian8.ItemView {
   constructor(leaf, projectService) {
     super(leaf);
     /** 时间线数据 */
@@ -7085,6 +8273,12 @@ var _TimelineView = class extends import_obsidian7.ItemView {
     this.currentZoom = 1;
     /** 当前滚动位置 */
     this.currentScroll = 0;
+    /** 渲染防抖定时器 */
+    this.renderDebounceTimer = null;
+    /** 上次渲染的事件数量，用于智能刷新 */
+    this.lastRenderedEventCount = 0;
+    /** 是否需要强制刷新 */
+    this.needsForceRefresh = false;
     this.projectService = projectService;
   }
   /**
@@ -7129,11 +8323,46 @@ var _TimelineView = class extends import_obsidian7.ItemView {
     this.cleanup();
   }
   /**
-   * 刷新时间线视图
-   * Refresh timeline view
+   * 刷新视图
+   * Refresh view with debounce and smart update
    */
   refresh() {
+    this.debouncedRender();
+  }
+  /**
+   * 强制刷新视图（忽略防抖）
+   * Force refresh view (ignore debounce)
+   */
+  forceRefresh() {
+    this.needsForceRefresh = true;
     this.renderTimeline();
+  }
+  /**
+   * 防抖渲染
+   * Debounced render
+   */
+  debouncedRender() {
+    if (this.renderDebounceTimer) {
+      clearTimeout(this.renderDebounceTimer);
+    }
+    this.renderDebounceTimer = setTimeout(() => {
+      this.smartRender();
+    }, 100);
+  }
+  /**
+   * 智能渲染（只在必要时更新）
+   * Smart render (only update when necessary)
+   */
+  smartRender() {
+    const currentEventCount = this.timelineData.length;
+    if (this.needsForceRefresh || currentEventCount !== this.lastRenderedEventCount) {
+      console.log(`TimelineView: Rendering (${this.lastRenderedEventCount} -> ${currentEventCount} events)`);
+      this.renderTimeline();
+      this.lastRenderedEventCount = currentEventCount;
+      this.needsForceRefresh = false;
+    } else {
+      console.log("TimelineView: Skipping render (no changes detected)");
+    }
   }
   /**
    * 处理项目变更
@@ -7142,6 +8371,8 @@ var _TimelineView = class extends import_obsidian7.ItemView {
   onProjectChanged() {
     this.timelineData = [];
     this.filteredCharacter = null;
+    this.lastRenderedEventCount = 0;
+    this.needsForceRefresh = true;
     this.renderTimeline();
   }
   /**
@@ -7690,12 +8921,18 @@ synopsis: '\u4E3B\u89D2\u5728\u5E7F\u573A\u9047\u5230\u4E86\u91CD\u8981\u4EBA\u7
    * Cleanup resources
    */
   cleanup() {
+    if (this.renderDebounceTimer) {
+      clearTimeout(this.renderDebounceTimer);
+      this.renderDebounceTimer = null;
+    }
     this.timelineData = [];
     this.filteredCharacter = null;
     this.timelineContainer = null;
     this.svg = null;
     this.currentZoom = 1;
     this.currentScroll = 0;
+    this.lastRenderedEventCount = 0;
+    this.needsForceRefresh = false;
     this.hideEventTooltip();
   }
 };
@@ -7704,8 +8941,8 @@ var TimelineView = _TimelineView;
 TimelineView.VIEW_TYPE = "story-weaver-timeline";
 
 // src/views/CorkboardView.ts
-var import_obsidian8 = require("obsidian");
-var _CorkboardView = class extends import_obsidian8.ItemView {
+var import_obsidian9 = require("obsidian");
+var _CorkboardView = class extends import_obsidian9.ItemView {
   constructor(leaf, projectService) {
     super(leaf);
     /** 当前看板数据 */
@@ -7714,6 +8951,12 @@ var _CorkboardView = class extends import_obsidian8.ItemView {
     this.isDragging = false;
     this.draggedCard = null;
     this.draggedSceneData = null;
+    /** 渲染防抖定时器 */
+    this.renderDebounceTimer = null;
+    /** 上次渲染的场景数量，用于智能刷新 */
+    this.lastRenderedSceneCount = 0;
+    /** 是否需要强制刷新 */
+    this.needsForceRefresh = false;
     this.projectService = projectService;
   }
   /**
@@ -7758,11 +9001,46 @@ var _CorkboardView = class extends import_obsidian8.ItemView {
     this.cleanup();
   }
   /**
-   * 刷新看板视图
-   * Refresh corkboard view
+   * 刷新视图
+   * Refresh view with debounce and smart update
    */
   refresh() {
+    this.debouncedRender();
+  }
+  /**
+   * 强制刷新视图（忽略防抖）
+   * Force refresh view (ignore debounce)
+   */
+  forceRefresh() {
+    this.needsForceRefresh = true;
     this.renderBoard();
+  }
+  /**
+   * 防抖渲染
+   * Debounced render
+   */
+  debouncedRender() {
+    if (this.renderDebounceTimer) {
+      clearTimeout(this.renderDebounceTimer);
+    }
+    this.renderDebounceTimer = setTimeout(() => {
+      this.smartRender();
+    }, 100);
+  }
+  /**
+   * 智能渲染（只在必要时更新）
+   * Smart render (only update when necessary)
+   */
+  smartRender() {
+    const currentSceneCount = this.projectService.getAllScenes().length;
+    if (this.needsForceRefresh || currentSceneCount !== this.lastRenderedSceneCount) {
+      console.log(`CorkboardView: Rendering (${this.lastRenderedSceneCount} -> ${currentSceneCount} scenes)`);
+      this.renderBoard();
+      this.lastRenderedSceneCount = currentSceneCount;
+      this.needsForceRefresh = false;
+    } else {
+      console.log("CorkboardView: Skipping render (no changes detected)");
+    }
   }
   /**
    * 处理项目变更
@@ -7770,6 +9048,8 @@ var _CorkboardView = class extends import_obsidian8.ItemView {
    */
   onProjectChanged() {
     this.boardData = [];
+    this.lastRenderedSceneCount = 0;
+    this.needsForceRefresh = true;
     this.renderBoard();
   }
   /**
@@ -8289,10 +9569,16 @@ var _CorkboardView = class extends import_obsidian8.ItemView {
    * Cleanup resources
    */
   cleanup() {
+    if (this.renderDebounceTimer) {
+      clearTimeout(this.renderDebounceTimer);
+      this.renderDebounceTimer = null;
+    }
     this.isDragging = false;
     this.draggedCard = null;
     this.draggedSceneData = null;
     this.boardData = [];
+    this.lastRenderedSceneCount = 0;
+    this.needsForceRefresh = false;
   }
 };
 var CorkboardView = _CorkboardView;
@@ -8300,8 +9586,8 @@ var CorkboardView = _CorkboardView;
 CorkboardView.VIEW_TYPE = "story-weaver-corkboard";
 
 // src/views/HoverPopup.ts
-var import_obsidian9 = require("obsidian");
-var HoverPopup = class extends import_obsidian9.Component {
+var import_obsidian10 = require("obsidian");
+var HoverPopup = class extends import_obsidian10.Component {
   constructor(app) {
     super();
     this.popupElement = null;
@@ -8803,8 +10089,8 @@ var HoverPopup = class extends import_obsidian9.Component {
 };
 
 // src/settings/SettingsTab.ts
-var import_obsidian10 = require("obsidian");
-var StoryWeaverSettingsTab = class extends import_obsidian10.PluginSettingTab {
+var import_obsidian11 = require("obsidian");
+var StoryWeaverSettingsTab = class extends import_obsidian11.PluginSettingTab {
   constructor(app, plugin) {
     super(app, plugin);
     this.plugin = plugin;
@@ -8852,7 +10138,7 @@ var StoryWeaverSettingsTab = class extends import_obsidian10.PluginSettingTab {
     }
     if (!isFullVersion) {
       let activationCodeInput;
-      new import_obsidian10.Setting(containerEl).setName("\u6FC0\u6D3B\u7801").setDesc("\u8F93\u5165\u6FC0\u6D3B\u7801\u5347\u7EA7\u5230\u6B63\u5F0F\u7248\uFF0C\u4EAB\u53D7\u5B8C\u6574\u529F\u80FD").addText((text) => {
+      new import_obsidian11.Setting(containerEl).setName("\u6FC0\u6D3B\u7801").setDesc("\u8F93\u5165\u6FC0\u6D3B\u7801\u5347\u7EA7\u5230\u6B63\u5F0F\u7248\uFF0C\u4EAB\u53D7\u5B8C\u6574\u529F\u80FD").addText((text) => {
         activationCodeInput = text.inputEl;
         text.setPlaceholder("\u8BF7\u8F93\u5165\u6FC0\u6D3B\u7801").setValue("").onChange(async (value) => {
         });
@@ -8860,7 +10146,7 @@ var StoryWeaverSettingsTab = class extends import_obsidian10.PluginSettingTab {
         button.setButtonText("\u6FC0\u6D3B").setCta().onClick(async () => {
           const code = activationCodeInput.value.trim();
           if (!code) {
-            new import_obsidian10.Notice("\u8BF7\u8F93\u5165\u6FC0\u6D3B\u7801");
+            new import_obsidian11.Notice("\u8BF7\u8F93\u5165\u6FC0\u6D3B\u7801");
             return;
           }
           button.setButtonText("\u6FC0\u6D3B\u4E2D...");
@@ -8868,13 +10154,13 @@ var StoryWeaverSettingsTab = class extends import_obsidian10.PluginSettingTab {
           try {
             const result = await this.plugin.activateFullVersion(code);
             if (result.success) {
-              new import_obsidian10.Notice(result.message);
+              new import_obsidian11.Notice(result.message);
               this.display();
             } else {
-              new import_obsidian10.Notice(result.message);
+              new import_obsidian11.Notice(result.message);
             }
           } catch (error) {
-            new import_obsidian10.Notice("\u6FC0\u6D3B\u8FC7\u7A0B\u4E2D\u53D1\u751F\u9519\u8BEF\uFF0C\u8BF7\u7A0D\u540E\u91CD\u8BD5");
+            new import_obsidian11.Notice("\u6FC0\u6D3B\u8FC7\u7A0B\u4E2D\u53D1\u751F\u9519\u8BEF\uFF0C\u8BF7\u7A0D\u540E\u91CD\u8BD5");
             console.error("Activation error:", error);
           } finally {
             button.setButtonText("\u6FC0\u6D3B");
@@ -8918,15 +10204,15 @@ var StoryWeaverSettingsTab = class extends import_obsidian10.PluginSettingTab {
    */
   addBasicSettings(containerEl) {
     containerEl.createEl("h3", { text: "\u57FA\u672C\u8BBE\u7F6E" });
-    new import_obsidian10.Setting(containerEl).setName("\u9ED8\u8BA4\u9879\u76EE\u8DEF\u5F84").setDesc("\u65B0\u5EFA\u9879\u76EE\u7684\u9ED8\u8BA4\u5B58\u653E\u4F4D\u7F6E").addText((text) => text.setPlaceholder("\u4F8B\u5982\uFF1AProjects/Writing").setValue(this.plugin.settings.defaultProjectPath).onChange(async (value) => {
+    new import_obsidian11.Setting(containerEl).setName("\u9ED8\u8BA4\u9879\u76EE\u8DEF\u5F84").setDesc("\u65B0\u5EFA\u9879\u76EE\u7684\u9ED8\u8BA4\u5B58\u653E\u4F4D\u7F6E").addText((text) => text.setPlaceholder("\u4F8B\u5982\uFF1AProjects/Writing").setValue(this.plugin.settings.defaultProjectPath).onChange(async (value) => {
       this.plugin.settings.defaultProjectPath = value;
       await this.plugin.saveSettings();
     }));
-    new import_obsidian10.Setting(containerEl).setName("\u81EA\u52A8\u4FDD\u5B58\u95F4\u9694").setDesc("\u81EA\u52A8\u4FDD\u5B58\u9879\u76EE\u6570\u636E\u7684\u65F6\u95F4\u95F4\u9694\uFF08\u79D2\uFF09").addSlider((slider) => slider.setLimits(10, 300, 10).setValue(this.plugin.settings.autoSaveInterval).setDynamicTooltip().onChange(async (value) => {
+    new import_obsidian11.Setting(containerEl).setName("\u81EA\u52A8\u4FDD\u5B58\u95F4\u9694").setDesc("\u81EA\u52A8\u4FDD\u5B58\u9879\u76EE\u6570\u636E\u7684\u65F6\u95F4\u95F4\u9694\uFF08\u79D2\uFF09").addSlider((slider) => slider.setLimits(10, 300, 10).setValue(this.plugin.settings.autoSaveInterval).setDynamicTooltip().onChange(async (value) => {
       this.plugin.settings.autoSaveInterval = value;
       await this.plugin.saveSettings();
     }));
-    new import_obsidian10.Setting(containerEl).setName("\u8C03\u8BD5\u6A21\u5F0F").setDesc("\u542F\u7528\u8C03\u8BD5\u6A21\u5F0F\u4EE5\u83B7\u53D6\u66F4\u8BE6\u7EC6\u7684\u65E5\u5FD7\u4FE1\u606F").addToggle((toggle) => toggle.setValue(this.plugin.settings.debugMode).onChange(async (value) => {
+    new import_obsidian11.Setting(containerEl).setName("\u8C03\u8BD5\u6A21\u5F0F").setDesc("\u542F\u7528\u8C03\u8BD5\u6A21\u5F0F\u4EE5\u83B7\u53D6\u66F4\u8BE6\u7EC6\u7684\u65E5\u5FD7\u4FE1\u606F").addToggle((toggle) => toggle.setValue(this.plugin.settings.debugMode).onChange(async (value) => {
       this.plugin.settings.debugMode = value;
       await this.plugin.saveSettings();
     }));
@@ -8939,15 +10225,15 @@ var StoryWeaverSettingsTab = class extends import_obsidian10.PluginSettingTab {
   addWordCountSettings(containerEl) {
     containerEl.createEl("h3", { text: "\u5B57\u6570\u7EDF\u8BA1\u8BBE\u7F6E" });
     const wordCountSettings = this.plugin.settings.wordCountSettings;
-    new import_obsidian10.Setting(containerEl).setName("\u542F\u7528\u5B9E\u65F6\u5B57\u6570\u7EDF\u8BA1").setDesc("\u5728\u7F16\u8F91\u573A\u666F\u6587\u4EF6\u65F6\u81EA\u52A8\u66F4\u65B0\u5B57\u6570\u7EDF\u8BA1\u3002\u5173\u95ED\u6B64\u9009\u9879\u53EF\u4EE5\u51CF\u5C11\u6587\u4EF6\u4FEE\u6539\u63D0\u793A\uFF0C\u4F46\u9700\u8981\u624B\u52A8\u66F4\u65B0\u7EDF\u8BA1\u3002").addToggle((toggle) => toggle.setValue(wordCountSettings.enableRealTimeCount).onChange(async (value) => {
+    new import_obsidian11.Setting(containerEl).setName("\u542F\u7528\u5B9E\u65F6\u5B57\u6570\u7EDF\u8BA1").setDesc("\u5728\u7F16\u8F91\u573A\u666F\u6587\u4EF6\u65F6\u81EA\u52A8\u66F4\u65B0\u5B57\u6570\u7EDF\u8BA1\u3002\u5173\u95ED\u6B64\u9009\u9879\u53EF\u4EE5\u51CF\u5C11\u6587\u4EF6\u4FEE\u6539\u63D0\u793A\uFF0C\u4F46\u9700\u8981\u624B\u52A8\u66F4\u65B0\u7EDF\u8BA1\u3002").addToggle((toggle) => toggle.setValue(wordCountSettings.enableRealTimeCount).onChange(async (value) => {
       this.plugin.settings.wordCountSettings.enableRealTimeCount = value;
       await this.plugin.saveSettings();
     }));
-    new import_obsidian10.Setting(containerEl).setName("\u66F4\u65B0\u5EF6\u8FDF\u65F6\u95F4").setDesc("\u505C\u6B62\u7F16\u8F91\u540E\u591A\u957F\u65F6\u95F4\u66F4\u65B0\u5B57\u6570\u7EDF\u8BA1\uFF08\u79D2\uFF09\u3002\u589E\u52A0\u5EF6\u8FDF\u53EF\u4EE5\u51CF\u5C11\u9891\u7E41\u7684\u6587\u4EF6\u4FEE\u6539\u63D0\u793A\u3002").addSlider((slider) => slider.setLimits(1, 10, 1).setValue(wordCountSettings.updateDebounceDelay / 1e3).setDynamicTooltip().onChange(async (value) => {
+    new import_obsidian11.Setting(containerEl).setName("\u66F4\u65B0\u5EF6\u8FDF\u65F6\u95F4").setDesc("\u505C\u6B62\u7F16\u8F91\u540E\u591A\u957F\u65F6\u95F4\u66F4\u65B0\u5B57\u6570\u7EDF\u8BA1\uFF08\u79D2\uFF09\u3002\u589E\u52A0\u5EF6\u8FDF\u53EF\u4EE5\u51CF\u5C11\u9891\u7E41\u7684\u6587\u4EF6\u4FEE\u6539\u63D0\u793A\u3002").addSlider((slider) => slider.setLimits(1, 10, 1).setValue(wordCountSettings.updateDebounceDelay / 1e3).setDynamicTooltip().onChange(async (value) => {
       this.plugin.settings.wordCountSettings.updateDebounceDelay = value * 1e3;
       await this.plugin.saveSettings();
     }));
-    new import_obsidian10.Setting(containerEl).setName("\u5B57\u6570\u53D8\u5316\u9608\u503C").setDesc("\u53EA\u6709\u5B57\u6570\u53D8\u5316\u8D85\u8FC7\u6B64\u503C\u65F6\u624D\u66F4\u65B0\u6587\u4EF6\u3002\u8BBE\u7F6E\u8F83\u5927\u7684\u503C\u53EF\u4EE5\u51CF\u5C11\u9891\u7E41\u66F4\u65B0\u3002").addSlider((slider) => slider.setLimits(1, 50, 1).setValue(wordCountSettings.updateThreshold).setDynamicTooltip().onChange(async (value) => {
+    new import_obsidian11.Setting(containerEl).setName("\u5B57\u6570\u53D8\u5316\u9608\u503C").setDesc("\u53EA\u6709\u5B57\u6570\u53D8\u5316\u8D85\u8FC7\u6B64\u503C\u65F6\u624D\u66F4\u65B0\u6587\u4EF6\u3002\u8BBE\u7F6E\u8F83\u5927\u7684\u503C\u53EF\u4EE5\u51CF\u5C11\u9891\u7E41\u66F4\u65B0\u3002").addSlider((slider) => slider.setLimits(1, 50, 1).setValue(wordCountSettings.updateThreshold).setDynamicTooltip().onChange(async (value) => {
       this.plugin.settings.wordCountSettings.updateThreshold = value;
       await this.plugin.saveSettings();
     }));
@@ -8959,23 +10245,23 @@ var StoryWeaverSettingsTab = class extends import_obsidian10.PluginSettingTab {
   addFolderStructureSettings(containerEl) {
     containerEl.createEl("h3", { text: "\u6587\u4EF6\u5939\u7ED3\u6784" });
     const folderStructure = this.plugin.settings.folderStructure;
-    new import_obsidian10.Setting(containerEl).setName("\u7A3F\u4EF6\u6587\u4EF6\u5939").setDesc("\u5B58\u653E\u7AE0\u8282\u548C\u573A\u666F\u6587\u4EF6\u7684\u6587\u4EF6\u5939\u540D\u79F0").addText((text) => text.setValue(folderStructure.scenes).onChange(async (value) => {
+    new import_obsidian11.Setting(containerEl).setName("\u7A3F\u4EF6\u6587\u4EF6\u5939").setDesc("\u5B58\u653E\u7AE0\u8282\u548C\u573A\u666F\u6587\u4EF6\u7684\u6587\u4EF6\u5939\u540D\u79F0").addText((text) => text.setValue(folderStructure.scenes).onChange(async (value) => {
       this.plugin.settings.folderStructure.scenes = value;
       await this.plugin.saveSettings();
     }));
-    new import_obsidian10.Setting(containerEl).setName("\u89D2\u8272\u6587\u4EF6\u5939").setDesc("\u5B58\u653E\u89D2\u8272\u8BBE\u5B9A\u6587\u4EF6\u7684\u6587\u4EF6\u5939\u540D\u79F0").addText((text) => text.setValue(folderStructure.characters).onChange(async (value) => {
+    new import_obsidian11.Setting(containerEl).setName("\u89D2\u8272\u6587\u4EF6\u5939").setDesc("\u5B58\u653E\u89D2\u8272\u8BBE\u5B9A\u6587\u4EF6\u7684\u6587\u4EF6\u5939\u540D\u79F0").addText((text) => text.setValue(folderStructure.characters).onChange(async (value) => {
       this.plugin.settings.folderStructure.characters = value;
       await this.plugin.saveSettings();
     }));
-    new import_obsidian10.Setting(containerEl).setName("\u5730\u70B9\u6587\u4EF6\u5939").setDesc("\u5B58\u653E\u5730\u70B9\u8BBE\u5B9A\u6587\u4EF6\u7684\u6587\u4EF6\u5939\u540D\u79F0").addText((text) => text.setValue(folderStructure.locations).onChange(async (value) => {
+    new import_obsidian11.Setting(containerEl).setName("\u5730\u70B9\u6587\u4EF6\u5939").setDesc("\u5B58\u653E\u5730\u70B9\u8BBE\u5B9A\u6587\u4EF6\u7684\u6587\u4EF6\u5939\u540D\u79F0").addText((text) => text.setValue(folderStructure.locations).onChange(async (value) => {
       this.plugin.settings.folderStructure.locations = value;
       await this.plugin.saveSettings();
     }));
-    new import_obsidian10.Setting(containerEl).setName("\u8BBE\u5B9A\u6587\u4EF6\u5939").setDesc("\u5B58\u653E\u4E16\u754C\u89C2\u8BBE\u5B9A\u6587\u4EF6\u7684\u6587\u4EF6\u5939\u540D\u79F0").addText((text) => text.setValue(folderStructure.settings).onChange(async (value) => {
+    new import_obsidian11.Setting(containerEl).setName("\u8BBE\u5B9A\u6587\u4EF6\u5939").setDesc("\u5B58\u653E\u4E16\u754C\u89C2\u8BBE\u5B9A\u6587\u4EF6\u7684\u6587\u4EF6\u5939\u540D\u79F0").addText((text) => text.setValue(folderStructure.settings).onChange(async (value) => {
       this.plugin.settings.folderStructure.settings = value;
       await this.plugin.saveSettings();
     }));
-    new import_obsidian10.Setting(containerEl).setName("\u6A21\u677F\u6587\u4EF6\u5939").setDesc("\u5B58\u653E\u6A21\u677F\u6587\u4EF6\u7684\u6587\u4EF6\u5939\u540D\u79F0").addText((text) => text.setValue(folderStructure.templates).onChange(async (value) => {
+    new import_obsidian11.Setting(containerEl).setName("\u6A21\u677F\u6587\u4EF6\u5939").setDesc("\u5B58\u653E\u6A21\u677F\u6587\u4EF6\u7684\u6587\u4EF6\u5939\u540D\u79F0").addText((text) => text.setValue(folderStructure.templates).onChange(async (value) => {
       this.plugin.settings.folderStructure.templates = value;
       await this.plugin.saveSettings();
     }));
@@ -8983,11 +10269,11 @@ var StoryWeaverSettingsTab = class extends import_obsidian10.PluginSettingTab {
 };
 
 // src/views/QuickCreatePanel.ts
-var import_obsidian12 = require("obsidian");
+var import_obsidian13 = require("obsidian");
 
 // src/modals/QuickCreateModal.ts
-var import_obsidian11 = require("obsidian");
-var QuickCreateModal = class extends import_obsidian11.Modal {
+var import_obsidian12 = require("obsidian");
+var QuickCreateModal = class extends import_obsidian12.Modal {
   constructor(app, projectService, createType) {
     super(app);
     /** 选中的项目路径 */
@@ -9034,11 +10320,11 @@ var QuickCreateModal = class extends import_obsidian11.Modal {
   async scanAvailableProjects() {
     this.availableProjects = [];
     const folders = this.app.vault.getAllLoadedFiles().filter(
-      (file) => file instanceof import_obsidian11.TFolder
+      (file) => file instanceof import_obsidian12.TFolder
     );
     for (const folder of folders) {
       const projectFile = this.app.vault.getAbstractFileByPath(`${folder.path}/_project.md`);
-      if (projectFile instanceof import_obsidian11.TFile) {
+      if (projectFile instanceof import_obsidian12.TFile) {
         this.availableProjects.push(folder.path);
       }
     }
@@ -9061,10 +10347,10 @@ var QuickCreateModal = class extends import_obsidian11.Modal {
       return;
     const scenesPath = `${this.selectedProjectPath}/10_\u7A3F\u4EF6`;
     const scenesFolder = this.app.vault.getAbstractFileByPath(scenesPath);
-    if (!(scenesFolder instanceof import_obsidian11.TFolder))
+    if (!(scenesFolder instanceof import_obsidian12.TFolder))
       return;
     for (const child of scenesFolder.children) {
-      if (child instanceof import_obsidian11.TFolder) {
+      if (child instanceof import_obsidian12.TFolder) {
         this.availableVolumes.push(child.name);
       }
     }
@@ -9082,10 +10368,10 @@ var QuickCreateModal = class extends import_obsidian11.Modal {
       return;
     const volumePath = `${this.selectedProjectPath}/10_\u7A3F\u4EF6/${volumeName}`;
     const volumeFolder = this.app.vault.getAbstractFileByPath(volumePath);
-    if (!(volumeFolder instanceof import_obsidian11.TFolder))
+    if (!(volumeFolder instanceof import_obsidian12.TFolder))
       return;
     for (const child of volumeFolder.children) {
-      if (child instanceof import_obsidian11.TFolder) {
+      if (child instanceof import_obsidian12.TFolder) {
         this.availableChapters.push(child.name);
       }
     }
@@ -9097,7 +10383,7 @@ var QuickCreateModal = class extends import_obsidian11.Modal {
    * 渲染表单内容
    */
   renderForm(container) {
-    new import_obsidian11.Setting(container).setName("\u9009\u62E9\u9879\u76EE").setDesc("\u9009\u62E9\u8981\u521B\u5EFA\u7B14\u8BB0\u7684\u9879\u76EE").addDropdown((dropdown) => {
+    new import_obsidian12.Setting(container).setName("\u9009\u62E9\u9879\u76EE").setDesc("\u9009\u62E9\u8981\u521B\u5EFA\u7B14\u8BB0\u7684\u9879\u76EE").addDropdown((dropdown) => {
       dropdown.addOptions(this.availableProjects.reduce((acc, path) => {
         const name = path.split("/").pop() || path;
         acc[path] = name;
@@ -9109,7 +10395,7 @@ var QuickCreateModal = class extends import_obsidian11.Modal {
       });
     });
     if (this.createType === "scene") {
-      new import_obsidian11.Setting(container).setName("\u9009\u62E9\u5377").setDesc("\u9009\u62E9\u573A\u666F\u6240\u5C5E\u7684\u5377").addDropdown((dropdown) => {
+      new import_obsidian12.Setting(container).setName("\u9009\u62E9\u5377").setDesc("\u9009\u62E9\u573A\u666F\u6240\u5C5E\u7684\u5377").addDropdown((dropdown) => {
         dropdown.addOptions(this.availableVolumes.reduce((acc, volume) => {
           acc[volume] = this.beautifyFolderName(volume);
           return acc;
@@ -9119,7 +10405,7 @@ var QuickCreateModal = class extends import_obsidian11.Modal {
           this.refreshForm();
         });
       });
-      new import_obsidian11.Setting(container).setName("\u9009\u62E9\u7AE0\u8282").setDesc("\u9009\u62E9\u573A\u666F\u6240\u5C5E\u7684\u7AE0\u8282").addDropdown((dropdown) => {
+      new import_obsidian12.Setting(container).setName("\u9009\u62E9\u7AE0\u8282").setDesc("\u9009\u62E9\u573A\u666F\u6240\u5C5E\u7684\u7AE0\u8282").addDropdown((dropdown) => {
         dropdown.addOptions(this.availableChapters.reduce((acc, chapter) => {
           acc[chapter] = this.beautifyFolderName(chapter);
           return acc;
@@ -9128,7 +10414,7 @@ var QuickCreateModal = class extends import_obsidian11.Modal {
         });
       });
     }
-    new import_obsidian11.Setting(container).setName("\u7B14\u8BB0\u540D\u79F0").setDesc("\u8F93\u5165\u7B14\u8BB0\u7684\u6587\u4EF6\u540D\uFF08\u4E0D\u9700\u8981\u6269\u5C55\u540D\uFF09").addText((text) => {
+    new import_obsidian12.Setting(container).setName("\u7B14\u8BB0\u540D\u79F0").setDesc("\u8F93\u5165\u7B14\u8BB0\u7684\u6587\u4EF6\u540D\uFF08\u4E0D\u9700\u8981\u6269\u5C55\u540D\uFF09").addText((text) => {
       text.setPlaceholder("\u8BF7\u8F93\u5165\u7B14\u8BB0\u540D\u79F0...").setValue(this.noteName).onChange((value) => {
         this.noteName = value.trim();
       });
@@ -9275,7 +10561,7 @@ var QuickCreateModal = class extends import_obsidian11.Modal {
 
 // src/views/QuickCreatePanel.ts
 var QUICK_CREATE_PANEL_VIEW_TYPE = "story-weaver-quick-create";
-var _QuickCreatePanel = class extends import_obsidian12.ItemView {
+var _QuickCreatePanel = class extends import_obsidian13.ItemView {
   constructor(leaf, projectService) {
     super(leaf);
     this.projectService = projectService;
@@ -9490,7 +10776,7 @@ var DEFAULT_SETTINGS = {
     updateThreshold: 10
   }
 };
-var StoryWeaverPlugin = class extends import_obsidian13.Plugin {
+var StoryWeaverPlugin = class extends import_obsidian14.Plugin {
   constructor() {
     super(...arguments);
     /** 项目切换防抖定时器 */
@@ -9503,6 +10789,13 @@ var StoryWeaverPlugin = class extends import_obsidian13.Plugin {
   async onload() {
     console.log("Loading Story Weaver Plugin...");
     await this.loadSettings();
+    Logger.configure({
+      level: this.settings.debugMode ? 0 /* DEBUG */ : 1 /* INFO */,
+      enableTimestamp: true,
+      enableContext: true,
+      enableColors: true
+    });
+    Logger.info("Story Weaver Plugin loading...", "Main");
     this.activationService = new ActivationService();
     await this.syncLicenseStatus();
     this.projectService = ProjectService.getInstance(this.app);
@@ -9569,10 +10862,10 @@ var StoryWeaverPlugin = class extends import_obsidian13.Plugin {
    * 插件卸载时调用
    * Called when the plugin is unloaded
    */
-  onunload() {
+  async onunload() {
     console.log("Unloading Story Weaver Plugin...");
     this.cleanup();
-    ProjectService.destroyInstance();
+    await ProjectService.destroyInstance();
     console.log("Story Weaver Plugin unloaded");
   }
   /**
@@ -9916,7 +11209,7 @@ var StoryWeaverPlugin = class extends import_obsidian13.Plugin {
    * Handle file menu event (context menu)
    */
   onFileMenu(menu, file) {
-    if (!(file instanceof import_obsidian13.TFolder)) {
+    if (!(file instanceof import_obsidian14.TFolder)) {
       return;
     }
     if (!this.projectService.currentProject) {

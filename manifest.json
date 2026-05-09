@@ -1,7 +1,7 @@
 {
   "id": "story-weaver-plugin",
   "name": "织文者 (Story Weaver)",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "minAppVersion": "0.15.0",
   "description": "专为小说创作者设计的 Obsidian 插件，提供结构化写作环境、可视化管理工具和多格式导出功能。支持项目管理、场景编辑、大纲视图、看板管理、时间线视图、写作统计等功能。",
   "author": "Story Weaver Team",

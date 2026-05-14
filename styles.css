@@ -2178,3 +2178,739 @@
   background-color: var(--background-modifier-hover);
 }
 
+/* src/styles/project-manager-view.css */
+/* 
+ * 织文者项目管理视图样式
+ * Story Weaver Project Manager View Styles
+ * 
+ * 设计理念：文学编辑风格 (Editorial/Magazine)
+ * 温暖的纸张色调，优雅的层次感，像精装书籍内页般的质感
+ */
+
+/* ===== 项目管理视图容器 ===== */
+.project-manager {
+  padding: 24px 32px;
+  height: 100%;
+  overflow-y: auto;
+  background: linear-gradient(180deg, 
+    var(--background-primary) 0%, 
+    hsla(35, 25%, 96%, 0.5) 100%
+  );
+}
+
+/* ===== 头部区域 ===== */
+.project-manager-header {
+  margin-bottom: 28px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid hsla(30, 15%, 85%, 0.6);
+  position: relative;
+}
+
+.project-manager-header::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  width: 60px;
+  height: 2px;
+  background: linear-gradient(90deg, #b8860b, #d4a574);
+  border-radius: 1px;
+}
+
+.project-manager-title {
+  margin: 0 0 6px 0;
+  font-size: 1.75rem;
+  font-weight: 300;
+  letter-spacing: 0.02em;
+  color: var(--text-normal);
+  font-family: Georgia, 'Times New Roman', serif;
+}
+
+.project-manager-subtitle {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  letter-spacing: 0.01em;
+}
+
+/* ===== 工具栏 ===== */
+.project-manager-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 24px;
+  padding: 16px 20px;
+  background: var(--background-secondary);
+  border-radius: 12px;
+  border: 1px solid hsla(30, 15%, 88%, 0.8);
+  box-shadow: 
+    0 1px 3px hsla(30, 20%, 50%, 0.06),
+    inset 0 1px 0 hsla(0, 0%, 100%, 0.5);
+  flex-wrap: wrap;
+}
+
+.project-manager-search-wrapper {
+  flex: 1;
+  min-width: 220px;
+}
+
+.project-manager-search-input {
+  width: 100%;
+  padding: 10px 16px;
+  border: 1px solid hsla(30, 15%, 85%, 0.8);
+  border-radius: 8px;
+  background: var(--background-primary);
+  color: var(--text-normal);
+  font-size: 0.9rem;
+  outline: none;
+  transition: all 0.25s ease;
+  box-shadow: inset 0 1px 2px hsla(30, 20%, 50%, 0.05);
+}
+
+.project-manager-search-input:focus {
+  border-color: #b8860b;
+  box-shadow: 
+    inset 0 1px 2px hsla(30, 20%, 50%, 0.05),
+    0 0 0 3px hsla(43, 74%, 49%, 0.1);
+}
+
+.project-manager-search-input::placeholder {
+  color: var(--text-faint);
+  font-style: italic;
+}
+
+.project-manager-sort-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.project-manager-sort-label {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.project-manager-sort-select {
+  padding: 8px 12px;
+  border: 1px solid hsla(30, 15%, 85%, 0.8);
+  border-radius: 6px;
+  background: var(--background-primary);
+  color: var(--text-normal);
+  font-size: 0.85rem;
+  outline: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.project-manager-sort-select:hover {
+  border-color: hsla(30, 15%, 75%, 1);
+}
+
+.project-manager-sort-select:focus {
+  border-color: #b8860b;
+}
+
+.project-manager-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.project-manager-action-btn {
+  padding: 8px 16px;
+  border: 1px solid hsla(30, 15%, 85%, 0.8);
+  border-radius: 6px;
+  background: var(--background-primary);
+  color: var(--text-normal);
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+  position: relative;
+  overflow: hidden;
+}
+
+.project-manager-action-btn::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(135deg, 
+    hsla(43, 74%, 49%, 0.08) 0%, 
+    hsla(30, 50%, 60%, 0.08) 100%
+  );
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.project-manager-action-btn:hover::before {
+  opacity: 1;
+}
+
+.project-manager-action-btn:hover {
+  border-color: #b8860b;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px hsla(30, 20%, 50%, 0.12);
+}
+
+/* ===== 项目列表 ===== */
+.project-manager-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 20px;
+}
+
+/* ===== 项目卡片 ===== */
+.project-manager-card {
+  padding: 0;
+  background: var(--background-secondary);
+  border-radius: 12px;
+  border: 1px solid hsla(30, 15%, 88%, 0.8);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow: hidden;
+  position: relative;
+  box-shadow: 
+    0 1px 3px hsla(30, 20%, 50%, 0.04),
+    0 4px 12px hsla(30, 20%, 50%, 0.02);
+}
+
+.project-manager-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, 
+    #b8860b 0%, 
+    #d4a574 50%, 
+    #b8860b 100%
+  );
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.project-manager-card:hover {
+  border-color: hsla(30, 15%, 80%, 1);
+  transform: translateY(-2px);
+  box-shadow: 
+    0 4px 12px hsla(30, 20%, 50%, 0.08),
+    0 8px 24px hsla(30, 20%, 50%, 0.06);
+}
+
+.project-manager-card:hover::before {
+  opacity: 1;
+}
+
+.project-manager-card-active {
+  border-color: #b8860b;
+  box-shadow: 
+    0 2px 8px hsla(43, 74%, 49%, 0.15),
+    0 4px 16px hsla(43, 74%, 49%, 0.1);
+}
+
+.project-manager-card-active::before {
+  opacity: 1;
+}
+
+/* ===== 卡片头部 ===== */
+.project-manager-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 20px 12px;
+  gap: 12px;
+  background: linear-gradient(180deg, 
+    hsla(35, 30%, 98%, 0.8) 0%, 
+    transparent 100%
+  );
+}
+
+.project-manager-card-name {
+  font-size: 1.1rem;
+  font-weight: 500;
+  color: var(--text-normal);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  letter-spacing: 0.01em;
+}
+
+.project-manager-card-active-badge {
+  padding: 3px 10px;
+  background: linear-gradient(135deg, #b8860b, #a0762e);
+  color: white;
+  border-radius: 12px;
+  font-size: 0.7rem;
+  font-weight: 500;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+  flex-shrink: 0;
+  text-transform: uppercase;
+  box-shadow: 0 1px 3px hsla(43, 74%, 49%, 0.3);
+}
+
+.project-manager-card-status {
+  font-size: 0.8rem;
+  white-space: nowrap;
+  flex-shrink: 0;
+  padding: 3px 10px;
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+.project-manager-status-planning { 
+  color: #6b7280; 
+  background: hsla(220, 10%, 96%, 1);
+}
+.project-manager-status-drafting { 
+  color: #b45309; 
+  background: hsla(32, 95%, 90%, 1);
+}
+.project-manager-status-revising { 
+  color: #0369a1; 
+  background: hsla(200, 95%, 90%, 1);
+}
+.project-manager-status-editing { 
+  color: #0369a1; 
+  background: hsla(200, 95%, 90%, 1);
+}
+.project-manager-status-completed { 
+  color: #047857; 
+  background: hsla(160, 70%, 92%, 1);
+}
+
+/* ===== 卡片主体 ===== */
+.project-manager-card-body {
+  padding: 0 20px 16px;
+}
+
+.project-manager-card-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.project-manager-card-stat-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 12px 8px;
+  background: hsla(35, 25%, 97%, 0.6);
+  border-radius: 8px;
+  border: 1px solid hsla(30, 15%, 92%, 0.5);
+}
+
+.project-manager-card-stat-label {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.project-manager-card-stat-value {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-normal);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ===== 进度条 ===== */
+.project-manager-card-progress-wrapper {
+  margin-top: 4px;
+}
+
+.project-manager-card-progress-label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.project-manager-card-progress-bar {
+  height: 8px;
+  background: hsla(30, 15%, 90%, 1);
+  border-radius: 4px;
+  overflow: hidden;
+  box-shadow: inset 0 1px 2px hsla(30, 20%, 50%, 0.1);
+}
+
+.project-manager-card-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, 
+    #b8860b 0%, 
+    #d4a574 100%
+  );
+  border-radius: 4px;
+  transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+  min-width: 0;
+  position: relative;
+}
+
+.project-manager-card-progress-fill::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(180deg, 
+    hsla(0, 0%, 100%, 0.2) 0%, 
+    transparent 50%
+  );
+}
+
+/* ===== 卡片底部 ===== */
+.project-manager-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 20px 16px;
+  border-top: 1px solid hsla(30, 15%, 92%, 0.6);
+  background: hsla(35, 20%, 98%, 0.5);
+  flex-wrap: wrap;
+}
+
+.project-manager-card-time {
+  font-size: 0.75rem;
+  color: var(--text-faint);
+  font-style: italic;
+}
+
+.project-manager-card-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.project-manager-card-btn {
+  padding: 6px 14px;
+  border: 1px solid hsla(30, 15%, 88%, 0.8);
+  border-radius: 5px;
+  background: var(--background-primary);
+  color: var(--text-normal);
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-weight: 500;
+}
+
+.project-manager-card-btn:hover:not(:disabled) {
+  border-color: #b8860b;
+  color: #b8860b;
+  transform: translateY(-1px);
+}
+
+.project-manager-card-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: hsla(30, 15%, 95%, 1);
+}
+
+.project-manager-card-btn-open {
+  background: linear-gradient(135deg, 
+    hsla(43, 74%, 49%, 0.1) 0%, 
+    hsla(30, 50%, 60%, 0.1) 100%
+  );
+  border-color: hsla(43, 74%, 49%, 0.3);
+}
+
+.project-manager-card-btn-open:hover:not(:disabled) {
+  background: linear-gradient(135deg, 
+    hsla(43, 74%, 49%, 0.15) 0%, 
+    hsla(30, 50%, 60%, 0.15) 100%
+  );
+  border-color: #b8860b;
+  color: #8b6914;
+}
+
+.project-manager-card-btn-delete:hover:not(:disabled) {
+  border-color: #b91c1c;
+  color: #b91c1c;
+  background: hsla(0, 90%, 97%, 1);
+}
+
+.project-manager-card-btn-locate:hover:not(:disabled) {
+  background: hsla(35, 30%, 96%, 1);
+}
+
+/* ===== 空状态 ===== */
+.project-manager-empty {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 64px 32px;
+  text-align: center;
+}
+
+.project-manager-empty-icon {
+  font-size: 56px;
+  margin-bottom: 20px;
+  opacity: 0.4;
+}
+
+.project-manager-empty-message {
+  font-size: 1.15rem;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+  font-weight: 400;
+}
+
+.project-manager-empty-hint {
+  font-size: 0.9rem;
+  color: var(--text-faint);
+  max-width: 400px;
+  line-height: 1.6;
+}
+
+/* ===== 错误状态 ===== */
+.project-manager-error {
+  grid-column: 1 / -1;
+  text-align: center;
+  padding: 32px;
+  color: #b91c1c;
+  font-size: 0.95rem;
+  background: hsla(0, 90%, 97%, 1);
+  border-radius: 8px;
+  border: 1px solid hsla(0, 90%, 90%, 1);
+}
+
+/* ===== 删除确认弹窗 ===== */
+.project-delete-modal {
+  padding: 24px;
+  max-width: 420px;
+}
+
+.project-delete-modal h2 {
+  margin: 0 0 16px 0;
+  color: #b91c1c;
+  font-size: 1.25rem;
+  font-weight: 500;
+}
+
+.project-delete-modal-warning {
+  margin-bottom: 16px;
+  font-size: 0.95rem;
+  color: var(--text-normal);
+  line-height: 1.6;
+}
+
+.project-delete-modal-path {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin-bottom: 20px;
+  padding: 10px 12px;
+  background: hsla(35, 25%, 96%, 1);
+  border-radius: 6px;
+  word-break: break-all;
+  border: 1px solid hsla(30, 15%, 90%, 1);
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+}
+
+.project-delete-modal-options {
+  margin-bottom: 24px;
+}
+
+.project-delete-modal-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+  padding: 10px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+  border: 1px solid transparent;
+}
+
+.project-delete-modal-option:hover {
+  background: hsla(35, 25%, 96%, 1);
+  border-color: hsla(30, 15%, 90%, 1);
+}
+
+.project-delete-modal-option input[type="radio"] {
+  cursor: pointer;
+  accent-color: #b8860b;
+  width: 16px;
+  height: 16px;
+}
+
+.project-delete-modal-option label {
+  cursor: pointer;
+  font-size: 0.9rem;
+  color: var(--text-normal);
+}
+
+.project-delete-modal-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding-top: 16px;
+  border-top: 1px solid hsla(30, 15%, 90%, 1);
+}
+
+.project-delete-modal-cancel {
+  padding: 10px 20px;
+  border: 1px solid hsla(30, 15%, 88%, 0.8);
+  border-radius: 6px;
+  background: var(--background-primary);
+  color: var(--text-normal);
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.project-delete-modal-cancel:hover {
+  background: hsla(35, 25%, 96%, 1);
+  border-color: hsla(30, 15%, 80%, 1);
+}
+
+.project-delete-modal-confirm {
+  padding: 10px 20px;
+  border: 1px solid #b91c1c;
+  border-radius: 6px;
+  background: #b91c1c;
+  color: white;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.project-delete-modal-confirm:hover {
+  background: #991b1b;
+  border-color: #991b1b;
+}
+
+/* ===== 响应式调整 ===== */
+@media (max-width: 768px) {
+  .project-manager {
+    padding: 16px;
+  }
+
+  .project-manager-list {
+    grid-template-columns: 1fr;
+  }
+
+  .project-manager-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .project-manager-search-wrapper {
+    min-width: 100%;
+  }
+
+  .project-manager-actions {
+    justify-content: flex-end;
+  }
+}
+
+/* ===== 深色主题适配 ===== */
+.theme-dark .project-manager {
+  background: linear-gradient(180deg, 
+    var(--background-primary) 0%, 
+    hsla(30, 10%, 12%, 0.5) 100%
+  );
+}
+
+.theme-dark .project-manager-header::after {
+  background: linear-gradient(90deg, #d4a574, #b8860b);
+}
+
+.theme-dark .project-manager-toolbar {
+  border-color: hsla(30, 10%, 25%, 0.6);
+  box-shadow: 
+    0 1px 3px hsla(0, 0%, 0%, 0.2),
+    inset 0 1px 0 hsla(0, 0%, 100%, 0.03);
+}
+
+.theme-dark .project-manager-search-input {
+  border-color: hsla(30, 10%, 25%, 0.6);
+}
+
+.theme-dark .project-manager-search-input:focus {
+  border-color: #d4a574;
+  box-shadow: 
+    inset 0 1px 2px hsla(0, 0%, 0%, 0.2),
+    0 0 0 3px hsla(43, 50%, 60%, 0.15);
+}
+
+.theme-dark .project-manager-sort-select,
+.theme-dark .project-manager-action-btn {
+  border-color: hsla(30, 10%, 25%, 0.6);
+}
+
+.theme-dark .project-manager-card {
+  border-color: hsla(30, 10%, 22%, 0.6);
+  box-shadow: 
+    0 1px 3px hsla(0, 0%, 0%, 0.15),
+    0 4px 12px hsla(0, 0%, 0%, 0.1);
+}
+
+.theme-dark .project-manager-card:hover {
+  border-color: hsla(30, 10%, 30%, 0.8);
+  box-shadow: 
+    0 4px 12px hsla(0, 0%, 0%, 0.25),
+    0 8px 24px hsla(0, 0%, 0%, 0.15);
+}
+
+.theme-dark .project-manager-card-active {
+  border-color: #d4a574;
+  box-shadow: 
+    0 2px 8px hsla(43, 50%, 60%, 0.2),
+    0 4px 16px hsla(43, 50%, 60%, 0.15);
+}
+
+.theme-dark .project-manager-card-header {
+  background: linear-gradient(180deg, 
+    hsla(30, 15%, 18%, 0.5) 0%, 
+    transparent 100%
+  );
+}
+
+.theme-dark .project-manager-card-stat-item {
+  background: hsla(30, 10%, 15%, 0.5);
+  border-color: hsla(30, 10%, 22%, 0.5);
+}
+
+.theme-dark .project-manager-card-progress-bar {
+  background: hsla(30, 10%, 20%, 1);
+}
+
+.theme-dark .project-manager-card-footer {
+  border-top-color: hsla(30, 10%, 22%, 0.5);
+  background: hsla(30, 10%, 15%, 0.3);
+}
+
+.theme-dark .project-manager-card-btn {
+  border-color: hsla(30, 10%, 25%, 0.6);
+}
+
+.theme-dark .project-manager-card-btn-open {
+  background: linear-gradient(135deg, 
+    hsla(43, 50%, 60%, 0.1) 0%, 
+    hsla(30, 40%, 50%, 0.1) 100%
+  );
+  border-color: hsla(43, 50%, 60%, 0.25);
+}
+
+.theme-dark .project-manager-delete-modal-path {
+  background: hsla(30, 10%, 15%, 1);
+  border-color: hsla(30, 10%, 22%, 1);
+}
+
+.theme-dark .project-delete-modal-option:hover {
+  background: hsla(30, 10%, 18%, 1);
+  border-color: hsla(30, 10%, 25%, 1);
+}
+
+

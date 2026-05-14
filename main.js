@@ -27,7 +27,7 @@ __export(main_exports, {
   default: () => StoryWeaverPlugin
 });
 module.exports = __toCommonJS(main_exports);
-var import_obsidian14 = require("obsidian");
+var import_obsidian15 = require("obsidian");
 
 // src/services/ProjectService.ts
 var import_obsidian2 = require("obsidian");
@@ -1529,7 +1529,366 @@ ErrorHandler.errorMessages = {
   "UNKNOWN_ERROR": "\u53D1\u751F\u672A\u77E5\u9519\u8BEF\uFF0C\u8BF7\u67E5\u770B\u63A7\u5236\u53F0\u65E5\u5FD7"
 };
 
+// src/services/ProjectsRegistryService.ts
+var ProjectsRegistryService = class {
+  constructor(app) {
+    /** 注册表文件路径 */
+    this.REGISTRY_PATH = ".obsidian/plugins/story-weaver/projects-registry.json";
+    /** 注册表版本 */
+    this.REGISTRY_VERSION = "1.0.0";
+    /** 内存中的注册表缓存 */
+    this.registry = null;
+    /** 注册表是否已加载 */
+    this.loaded = false;
+    this.app = app;
+  }
+  /**
+   * 加载注册表
+   * Load registry from disk
+   */
+  async loadRegistry() {
+    try {
+      const exists = await this.app.vault.adapter.exists(this.REGISTRY_PATH);
+      if (exists) {
+        const content = await this.app.vault.adapter.read(this.REGISTRY_PATH);
+        const parsed = JSON.parse(content);
+        this.registry = this.migrateRegistry(parsed);
+        Logger.info(`Projects registry loaded: ${this.registry.projects.length} projects`, "ProjectsRegistryService");
+      } else {
+        this.registry = {
+          version: this.REGISTRY_VERSION,
+          projects: [],
+          lastUpdated: new Date().toISOString()
+        };
+        await this.saveRegistry();
+        Logger.info("Projects registry created with empty state", "ProjectsRegistryService");
+      }
+      this.loaded = true;
+    } catch (error) {
+      Logger.error("Failed to load projects registry, creating new one", "ProjectsRegistryService", error);
+      this.registry = {
+        version: this.REGISTRY_VERSION,
+        projects: [],
+        lastUpdated: new Date().toISOString()
+      };
+      this.loaded = true;
+    }
+  }
+  /**
+   * 保存注册表到磁盘
+   * Save registry to disk
+   */
+  async saveRegistry() {
+    if (!this.registry) {
+      return;
+    }
+    try {
+      this.registry.lastUpdated = new Date().toISOString();
+      const content = JSON.stringify(this.registry, null, 2);
+      const dirPath = this.REGISTRY_PATH.substring(0, this.REGISTRY_PATH.lastIndexOf("/"));
+      if (!await this.app.vault.adapter.exists(dirPath)) {
+        await this.app.vault.adapter.mkdir(dirPath);
+      }
+      await this.app.vault.adapter.write(this.REGISTRY_PATH, content);
+      Logger.debug("Projects registry saved", "ProjectsRegistryService");
+    } catch (error) {
+      Logger.error("Failed to save projects registry", "ProjectsRegistryService", error);
+      throw error;
+    }
+  }
+  /**
+   * 确保注册表已加载
+   * Ensure registry is loaded
+   */
+  async ensureLoaded() {
+    if (!this.loaded) {
+      await this.loadRegistry();
+    }
+  }
+  /**
+   * 注册新项目
+   * Register a new project
+   */
+  async registerProject(name, path, status = "planning", stats) {
+    var _a, _b, _c, _d, _e, _f;
+    await this.ensureLoaded();
+    const existing = this.registry.projects.find((p) => p.path === path);
+    if (existing) {
+      Logger.warn(`Project already registered at path: ${path}, updating instead`, "ProjectsRegistryService");
+      return this.updateProjectRecord(existing.id, { name, status, lastAccessedAt: new Date().toISOString() });
+    }
+    const now = new Date().toISOString();
+    const record = {
+      id: this.generateId(),
+      name,
+      path,
+      createdAt: now,
+      lastAccessedAt: now,
+      lastModifiedAt: now,
+      status,
+      stats: {
+        totalWords: (_a = stats == null ? void 0 : stats.totalWords) != null ? _a : 0,
+        targetWordCount: (_b = stats == null ? void 0 : stats.targetWordCount) != null ? _b : 1e5,
+        chapterCount: (_c = stats == null ? void 0 : stats.chapterCount) != null ? _c : 0,
+        sceneCount: (_d = stats == null ? void 0 : stats.sceneCount) != null ? _d : 0,
+        characterCount: (_e = stats == null ? void 0 : stats.characterCount) != null ? _e : 0,
+        locationCount: (_f = stats == null ? void 0 : stats.locationCount) != null ? _f : 0
+      }
+    };
+    this.registry.projects.push(record);
+    await this.saveRegistry();
+    Logger.info(`Project registered: ${name} (${path})`, "ProjectsRegistryService");
+    return record;
+  }
+  /**
+   * 注销项目（从注册表移除，不删除文件）
+   * Unregister a project (remove from registry, keep files)
+   */
+  async unregisterProject(projectId) {
+    await this.ensureLoaded();
+    const index = this.registry.projects.findIndex((p) => p.id === projectId);
+    if (index === -1) {
+      Logger.warn(`Project not found in registry: ${projectId}`, "ProjectsRegistryService");
+      return false;
+    }
+    const removed = this.registry.projects.splice(index, 1)[0];
+    await this.saveRegistry();
+    Logger.info(`Project unregistered: ${removed.name} (${removed.path})`, "ProjectsRegistryService");
+    return true;
+  }
+  /**
+   * 更新项目记录
+   * Update project record
+   */
+  async updateProjectRecord(projectId, updates) {
+    var _a, _b, _c, _d, _e, _f;
+    await this.ensureLoaded();
+    const record = this.registry.projects.find((p) => p.id === projectId);
+    if (!record) {
+      throw new Error(`Project not found in registry: ${projectId}`);
+    }
+    if (updates.name !== void 0)
+      record.name = updates.name;
+    if (updates.path !== void 0)
+      record.path = updates.path;
+    if (updates.lastAccessedAt !== void 0)
+      record.lastAccessedAt = updates.lastAccessedAt;
+    if (updates.lastModifiedAt !== void 0)
+      record.lastModifiedAt = updates.lastModifiedAt;
+    if (updates.status !== void 0)
+      record.status = updates.status;
+    if (updates.stats !== void 0) {
+      record.stats = {
+        totalWords: (_a = updates.stats.totalWords) != null ? _a : record.stats.totalWords,
+        targetWordCount: (_b = updates.stats.targetWordCount) != null ? _b : record.stats.targetWordCount,
+        chapterCount: (_c = updates.stats.chapterCount) != null ? _c : record.stats.chapterCount,
+        sceneCount: (_d = updates.stats.sceneCount) != null ? _d : record.stats.sceneCount,
+        characterCount: (_e = updates.stats.characterCount) != null ? _e : record.stats.characterCount,
+        locationCount: (_f = updates.stats.locationCount) != null ? _f : record.stats.locationCount
+      };
+    }
+    await this.saveRegistry();
+    Logger.debug(`Project record updated: ${record.name}`, "ProjectsRegistryService");
+    return record;
+  }
+  /**
+   * 更新项目统计摘要
+   * Update project stats summary
+   */
+  async updateProjectStats(projectId, stats) {
+    return this.updateProjectRecord(projectId, { stats });
+  }
+  /**
+   * 获取所有项目记录
+   * Get all project records
+   */
+  async listProjects() {
+    await this.ensureLoaded();
+    return [...this.registry.projects];
+  }
+  /**
+   * 根据ID获取项目记录
+   * Get project record by ID
+   */
+  async getProjectById(projectId) {
+    await this.ensureLoaded();
+    return this.registry.projects.find((p) => p.id === projectId) || null;
+  }
+  /**
+   * 根据路径获取项目记录
+   * Get project record by path
+   */
+  async getProjectByPath(path) {
+    await this.ensureLoaded();
+    return this.registry.projects.find((p) => p.path === path) || null;
+  }
+  /**
+   * 获取最近访问的项目
+   * Get recently accessed projects
+   */
+  async getRecentProjects(limit = 10) {
+    await this.ensureLoaded();
+    return [...this.registry.projects].sort((a, b) => new Date(b.lastAccessedAt).getTime() - new Date(a.lastAccessedAt).getTime()).slice(0, limit);
+  }
+  /**
+   * 搜索项目
+   * Search projects by name
+   */
+  async searchProjects(query) {
+    await this.ensureLoaded();
+    const lowerQuery = query.toLowerCase();
+    return this.registry.projects.filter(
+      (p) => p.name.toLowerCase().includes(lowerQuery) || p.path.toLowerCase().includes(lowerQuery)
+    );
+  }
+  /**
+   * 获取项目数量
+   * Get project count
+   */
+  async getProjectCount() {
+    await this.ensureLoaded();
+    return this.registry.projects.length;
+  }
+  /**
+   * 标记项目已访问
+   * Mark project as accessed
+   */
+  async touchProject(projectId) {
+    await this.updateProjectRecord(projectId, {
+      lastAccessedAt: new Date().toISOString()
+    });
+  }
+  /**
+   * 验证注册表中的项目路径是否仍然有效
+   * Validate that registered project paths still exist
+   */
+  async validateRegistry() {
+    await this.ensureLoaded();
+    const valid = [];
+    const invalid = [];
+    for (const record of this.registry.projects) {
+      const exists = await this.app.vault.adapter.exists(record.path);
+      const hasDashboard = await this.app.vault.adapter.exists(`${record.path}/_project.md`);
+      if (exists && hasDashboard) {
+        valid.push(record);
+      } else {
+        invalid.push(record);
+      }
+    }
+    Logger.info(`Registry validation: ${valid.length} valid, ${invalid.length} invalid`, "ProjectsRegistryService");
+    return { valid, invalid };
+  }
+  /**
+   * 清理无效的项目记录
+   * Clean up invalid project records from registry
+   */
+  async cleanupInvalidRecords() {
+    const { invalid } = await this.validateRegistry();
+    if (invalid.length === 0) {
+      return 0;
+    }
+    for (const record of invalid) {
+      await this.unregisterProject(record.id);
+    }
+    Logger.info(`Cleaned up ${invalid.length} invalid project records`, "ProjectsRegistryService");
+    return invalid.length;
+  }
+  /**
+   * 扫描 Vault 中所有可能的项目并注册未注册的项目
+   * Scan vault for unregistered projects and register them
+   */
+  async scanAndRegisterProjects() {
+    await this.ensureLoaded();
+    const newlyRegistered = [];
+    const registeredPaths = new Set(this.registry.projects.map((p) => p.path));
+    const files = this.app.vault.getMarkdownFiles();
+    for (const file of files) {
+      if (!file.path.endsWith("/_project.md")) {
+        continue;
+      }
+      const projectPath = file.path.replace("/_project.md", "");
+      if (registeredPaths.has(projectPath)) {
+        continue;
+      }
+      try {
+        const metadata = this.app.metadataCache.getFileCache(file);
+        const frontmatter = metadata == null ? void 0 : metadata.frontmatter;
+        const name = (frontmatter == null ? void 0 : frontmatter.name) || projectPath.split("/").pop() || "Untitled";
+        const status = (frontmatter == null ? void 0 : frontmatter.status) || "planning";
+        const record = await this.registerProject(name, projectPath, status, {
+          totalWords: (frontmatter == null ? void 0 : frontmatter.current_word_count) || 0,
+          targetWordCount: (frontmatter == null ? void 0 : frontmatter.target_word_count) || 1e5
+        });
+        newlyRegistered.push(record);
+      } catch (error) {
+        Logger.warn(`Failed to register project at ${projectPath}`, "ProjectsRegistryService", error);
+      }
+    }
+    if (newlyRegistered.length > 0) {
+      Logger.info(`Scanned and registered ${newlyRegistered.length} new projects`, "ProjectsRegistryService");
+    }
+    return newlyRegistered;
+  }
+  /**
+   * 生成唯一ID
+   * Generate unique ID
+   */
+  generateId() {
+    return `proj_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+  }
+  /**
+   * 迁移注册表格式
+   * Migrate registry format for backward compatibility
+   */
+  migrateRegistry(data) {
+    if (!data.version) {
+      data.version = this.REGISTRY_VERSION;
+    }
+    if (!data.projects) {
+      data.projects = [];
+    }
+    if (!data.lastUpdated) {
+      data.lastUpdated = new Date().toISOString();
+    }
+    for (const project of data.projects) {
+      if (!project.id) {
+        project.id = this.generateId();
+      }
+      if (!project.stats) {
+        project.stats = {
+          totalWords: 0,
+          targetWordCount: 1e5,
+          chapterCount: 0,
+          sceneCount: 0,
+          characterCount: 0,
+          locationCount: 0
+        };
+      }
+    }
+    return data;
+  }
+};
+
 // src/services/ProjectService.ts
+var FileOperationLock = class {
+  constructor() {
+    this.locks = /* @__PURE__ */ new Map();
+  }
+  async acquire(filePath) {
+    while (this.locks.has(filePath)) {
+      await this.locks.get(filePath);
+    }
+    let releaseFn;
+    const lockPromise = new Promise((resolve) => {
+      releaseFn = resolve;
+    });
+    this.locks.set(filePath, lockPromise);
+    return () => {
+      this.locks.delete(filePath);
+      releaseFn();
+    };
+  }
+};
 var _ProjectService = class {
   /**
    * 私有构造函数，确保单例模式
@@ -1544,6 +1903,8 @@ var _ProjectService = class {
     this.characterCache = /* @__PURE__ */ new Map();
     /** 地点数据缓存 */
     this.locationCache = /* @__PURE__ */ new Map();
+    /** 文件操作互斥锁 */
+    this.fileLock = new FileOperationLock();
     /** 插件设置 */
     this.settings = null;
     /** 缓存是否已初始化 */
@@ -1554,19 +1915,17 @@ var _ProjectService = class {
     this.pendingWordCountUpdates = /* @__PURE__ */ new Map();
     /** 上次更新的字数缓存，避免重复更新 */
     this.lastSavedWordCounts = /* @__PURE__ */ new Map();
-    /** 每日字数快照，用于计算今日新增 */
-    this.dailyWordSnapshots = /* @__PURE__ */ new Map();
     this.serviceContainer = serviceContainer;
     this.app = serviceContainer.app;
     this.metadataManager = serviceContainer.metadataManager;
     this.wordCountService = serviceContainer.wordCountService;
     this.resourceManager = new ResourceManager();
+    this.registryService = new ProjectsRegistryService(this.app);
     this.resourceManager.registerCache("sceneCache", this.sceneCache);
     this.resourceManager.registerCache("characterCache", this.characterCache);
     this.resourceManager.registerCache("locationCache", this.locationCache);
     this.resourceManager.registerCache("pendingWordCountUpdates", this.pendingWordCountUpdates);
     this.resourceManager.registerCache("lastSavedWordCounts", this.lastSavedWordCounts);
-    this.resourceManager.registerCache("dailyWordSnapshots", this.dailyWordSnapshots);
     this.wordCountService.setProjectTotalUpdateCallback(async () => {
       await this.updateProjectCurrentWordCount();
     });
@@ -1647,7 +2006,7 @@ var _ProjectService = class {
       };
       await this.initializeCache();
       this.enableFileSystemListener();
-      await this.loadDailyWordSnapshots();
+      await this.syncProjectToRegistry();
       Logger.info(`Project loaded successfully: ${this.currentProject.name}`, "ProjectService");
     } catch (error) {
       ErrorHandler.handle(error, "ProjectService.loadProject");
@@ -1697,6 +2056,7 @@ var _ProjectService = class {
    * Update scene metadata
    */
   async updateSceneMetadata(path, metadata) {
+    const release = await this.fileLock.acquire(path);
     try {
       const file = this.app.vault.getAbstractFileByPath(path);
       if (!file) {
@@ -1737,6 +2097,8 @@ var _ProjectService = class {
     } catch (error) {
       ErrorHandler.handle(error, "ProjectService.updateSceneMetadata");
       throw error;
+    } finally {
+      release();
     }
   }
   /**
@@ -1744,6 +2106,7 @@ var _ProjectService = class {
    * Update character metadata
    */
   async updateCharacterMetadata(path, metadata) {
+    const release = await this.fileLock.acquire(path);
     try {
       const file = this.app.vault.getAbstractFileByPath(path);
       if (!file) {
@@ -1758,7 +2121,7 @@ var _ProjectService = class {
         throw new Error(`Invalid metadata: ${validation.errors.join(", ")}`);
       }
       if (validation.warnings.length > 0) {
-        console.warn(`Metadata warnings for ${path}: ${validation.warnings.join(", ")}`);
+        Logger.warn(`Metadata warnings for ${path}: ${validation.warnings.join(", ")}`, "ProjectService");
       }
       const updatedCharacter = {
         ...currentCharacter,
@@ -1767,10 +2130,12 @@ var _ProjectService = class {
       const yamlData = this.metadataManager.characterDataToYaml(metadata);
       await this.metadataManager.updateMetadata(file, yamlData);
       this.characterCache.set(path, updatedCharacter);
-      console.log(`Character metadata updated successfully: ${path}`);
+      Logger.info(`Character metadata updated successfully: ${path}`, "ProjectService");
     } catch (error) {
-      console.error("Failed to update character metadata:", error);
+      Logger.error("Failed to update character metadata", "ProjectService", error);
       throw error;
+    } finally {
+      release();
     }
   }
   /**
@@ -1778,6 +2143,7 @@ var _ProjectService = class {
    * Update location metadata
    */
   async updateLocationMetadata(path, metadata) {
+    const release = await this.fileLock.acquire(path);
     try {
       const file = this.app.vault.getAbstractFileByPath(path);
       if (!file) {
@@ -1792,7 +2158,7 @@ var _ProjectService = class {
         throw new Error(`Invalid metadata: ${validation.errors.join(", ")}`);
       }
       if (validation.warnings.length > 0) {
-        console.warn(`Metadata warnings for ${path}: ${validation.warnings.join(", ")}`);
+        Logger.warn(`Metadata warnings for ${path}: ${validation.warnings.join(", ")}`, "ProjectService");
       }
       const updatedLocation = {
         ...currentLocation,
@@ -1801,10 +2167,12 @@ var _ProjectService = class {
       const yamlData = this.metadataManager.locationDataToYaml(metadata);
       await this.metadataManager.updateMetadata(file, yamlData);
       this.locationCache.set(path, updatedLocation);
-      console.log(`Location metadata updated successfully: ${path}`);
+      Logger.info(`Location metadata updated successfully: ${path}`, "ProjectService");
     } catch (error) {
-      console.error("Failed to update location metadata:", error);
+      Logger.error("Failed to update location metadata", "ProjectService", error);
       throw error;
+    } finally {
+      release();
     }
   }
   /**
@@ -1819,10 +2187,8 @@ var _ProjectService = class {
     const chapterCount = this.calculateChapterCount();
     const statusInfo = this.getProjectStatusInfo(this.currentProject.status);
     const progress = statusInfo.progress / 100;
-    const todayWords = this.calculateTodayWords();
     const stats = {
       totalWords,
-      todayWords,
       progress: Math.min(progress, 1),
       // 确保进度不超过100%
       chapterCount,
@@ -1860,66 +2226,42 @@ var _ProjectService = class {
       Logger.error(`Invalid status: ${newStatus}`, "ProjectService");
       throw new Error(`Invalid status: ${newStatus}`);
     }
-    const oldStatus = this.currentProject.status;
-    this.currentProject.status = newStatus;
-    this.currentProject.lastModified = new Date();
-    Logger.debug(`Status updated from ${oldStatus} to ${newStatus}`, "ProjectService");
     const dashboardPath = `${this.currentProject.rootPath}/_project.md`;
-    const dashboardFile = this.app.vault.getAbstractFileByPath(dashboardPath);
-    if (dashboardFile) {
-      const content = await this.app.vault.read(dashboardFile);
-      const updatedContent = this.updateFrontmatterField(content, "status", newStatus);
-      await this.app.vault.modify(dashboardFile, updatedContent);
-      Logger.info("Project status updated successfully", "ProjectService");
-    } else {
-      Logger.warn(`Dashboard file not found: ${dashboardPath}`, "ProjectService");
-    }
-    this.app.workspace.trigger("layout-change");
-    const activeFile = this.app.workspace.getActiveFile();
-    if (activeFile && activeFile.path.endsWith("/_project.md")) {
-      setTimeout(() => {
-        const activeLeaf = this.app.workspace.getActiveViewOfType(import_obsidian2.MarkdownView);
-        if (activeLeaf) {
-          activeLeaf.previewMode.rerender(true);
-        }
-      }, 50);
-    }
-  }
-  /**
-   * 更新frontmatter中的字段
-   * Update field in frontmatter
-   */
-  updateFrontmatterField(content, field, value) {
-    console.log(`\u{1F527} updateFrontmatterField called: ${field} = ${value}`);
-    const lines = content.split("\n");
-    let inFrontmatter = false;
-    let frontmatterEnd = -1;
-    let fieldFound = false;
-    for (let i = 0; i < lines.length; i++) {
-      if (lines[i].trim() === "---") {
-        if (!inFrontmatter) {
-          inFrontmatter = true;
-        } else {
-          frontmatterEnd = i;
-          break;
-        }
-      } else if (inFrontmatter && lines[i].startsWith(`${field}:`)) {
-        lines[i] = `${field}: "${value}"`;
-        fieldFound = true;
-        return lines.join("\n");
+    const release = await this.fileLock.acquire(dashboardPath);
+    try {
+      const oldStatus = this.currentProject.status;
+      this.currentProject.status = newStatus;
+      this.currentProject.lastModified = new Date();
+      Logger.debug(`Status updated from ${oldStatus} to ${newStatus}`, "ProjectService");
+      const dashboardFile = this.app.vault.getAbstractFileByPath(dashboardPath);
+      if (dashboardFile) {
+        await this.app.fileManager.processFrontMatter(dashboardFile, (frontmatter) => {
+          frontmatter.status = newStatus;
+          frontmatter.last_updated = this.getUTC8TimeString();
+        });
+        Logger.info("Project status updated successfully", "ProjectService");
+      } else {
+        Logger.warn(`Dashboard file not found: ${dashboardPath}`, "ProjectService");
       }
+      this.app.workspace.trigger("layout-change");
+      const activeFile = this.app.workspace.getActiveFile();
+      if (activeFile && activeFile.path.endsWith("/_project.md")) {
+        setTimeout(() => {
+          const activeLeaf = this.app.workspace.getActiveViewOfType(import_obsidian2.MarkdownView);
+          if (activeLeaf) {
+            activeLeaf.previewMode.rerender(true);
+          }
+        }, 50);
+      }
+    } finally {
+      release();
     }
-    if (!fieldFound && frontmatterEnd > 0) {
-      lines.splice(frontmatterEnd, 0, `${field}: "${value}"`);
-    } else if (!fieldFound) {
-      Logger.warn(`Could not add field to frontmatter: ${field}`, "ProjectService");
-    }
-    return lines.join("\n");
   }
   /**
-   * 导出项目
-   * Export project with specified options
-   */
+  
+     * 导出项目
+     * Export project with specified options
+     */
   async exportProject(options) {
     if (!this.currentProject) {
       throw new Error("No project loaded");
@@ -2363,20 +2705,12 @@ tags: [project, story-weaver]
 
 ## \u9879\u76EE\u6982\u89C8
 
-\u8FD9\u662F\u60A8\u7684\u5199\u4F5C\u9879\u76EE\u4EEA\u8868\u76D8\u3002\u7EDF\u8BA1\u4FE1\u606F\u901A\u8FC7 Dataview \u81EA\u52A8\u66F4\u65B0\uFF0C\u65E0\u9700\u624B\u52A8\u5237\u65B0\u3002
+\u8FD9\u662F\u60A8\u7684\u5199\u4F5C\u9879\u76EE\u4EEA\u8868\u76D8\u3002\u7EDF\u8BA1\u4FE1\u606F\u4F1A\u81EA\u52A8\u66F4\u65B0\uFF0C\u65E0\u9700\u624B\u52A8\u5237\u65B0\u3002
 
 ## \u{1F4CA} \u5199\u4F5C\u7EDF\u8BA1
 
 ### \u573A\u666F\u72B6\u6001\u5206\u5E03
-\`\`\`dataview
-TABLE WITHOUT ID
-  choice(status = "outline", "\u{1F4DD}", choice(status = "draft", "\u270F\uFE0F", choice(status = "revised", "\u{1F4D6}", choice(status = "complete", "\u2705", "\u2753")))) + " " + status as "\u72B6\u6001",
-  length(rows) as "\u6570\u91CF"
-FROM "${path}/10_\u7A3F\u4EF6"
-WHERE tags AND contains(tags, "scene")
-GROUP BY status
-SORT status
-\`\`\`
+{{SCENE_STATUS_DISTRIBUTION}}
 
 ### \u7AE0\u8282\u5B57\u6570\u7EDF\u8BA1
 {{CHAPTER_STATISTICS}}
@@ -2384,38 +2718,15 @@ SORT status
 ## \u{1F4DA} \u89D2\u8272\u7BA1\u7406
 
 ### \u89D2\u8272\u5217\u8868
-\`\`\`dataview
-TABLE WITHOUT ID
-  link(file.link, file.name) as "\u89D2\u8272",
-  status as "\u72B6\u6001",
-  age as "\u5E74\u9F84",
-  faction as "\u9635\u8425"
-FROM "${path}/20_\u89D2\u8272"
-WHERE tags AND contains(tags, "character")
-SORT file.name
-\`\`\`
+{{CHARACTER_LIST}}
 
 ## \u{1F5FA}\uFE0F \u5730\u70B9\u7BA1\u7406
 
 ### \u5730\u70B9\u5217\u8868
-\`\`\`dataview
-TABLE WITHOUT ID
-  link(file.link, file.name) as "\u5730\u70B9",
-  region as "\u533A\u57DF",
-  significance as "\u91CD\u8981\u7A0B\u5EA6"
-FROM "${path}/30_\u5730\u70B9"
-WHERE tags AND contains(tags, "location")
-SORT file.name
-\`\`\`
+{{LOCATION_LIST}}
 
-## \u{1F4C8} \u5199\u4F5C\u8FDB\u5EA6
+## \u{1F4CB} \u9879\u76EE\u72B6\u6001
 
-### \u6BCF\u65E5\u5199\u4F5C\u76EE\u6807
-- **\u65E5\u5747\u76EE\u6807**: {{DAILY_TARGET}} \u5B57
-- **\u4ECA\u65E5\u603B\u5B57\u6570**: {{TODAY_WORDS}} \u5B57
-- **\u5269\u4F59\u5B57\u6570**: {{REMAINING_WORDS}} \u5B57
-
-### \u9879\u76EE\u72B6\u6001
 **\u5F53\u524D\u72B6\u6001**: {{PROJECT_STATUS}}
 
 {{PROJECT_STATUS_SWITCHER}}
@@ -2423,10 +2734,6 @@ SORT file.name
 ## \u{1F4DD} \u9879\u76EE\u7B14\u8BB0
 
 \u5728\u8FD9\u91CC\u8BB0\u5F55\u60A8\u7684\u521B\u4F5C\u60F3\u6CD5\u548C\u9879\u76EE\u8FDB\u5C55...
-
----
-
-> \u{1F4A1} **\u63D0\u793A**: \u6B64\u4EEA\u8868\u76D8\u4F7F\u7528 Dataview \u63D2\u4EF6\u81EA\u52A8\u7EDF\u8BA1\u6570\u636E\u3002\u5982\u679C\u7EDF\u8BA1\u4FE1\u606F\u672A\u663E\u793A\uFF0C\u8BF7\u786E\u4FDD\u5DF2\u5B89\u88C5\u5E76\u542F\u7528 Dataview \u63D2\u4EF6\u3002
 `;
     await this.app.vault.create(dashboardPath, dashboardContent);
   }
@@ -2440,84 +2747,6 @@ SORT file.name
       totalWords += scene.wordCount || 0;
     }
     return totalWords;
-  }
-  /**
-   * 计算今日新增字数
-   * Calculate today's word count
-   */
-  calculateTodayWords() {
-    try {
-      const today = new Date();
-      const todayDateString = today.toISOString().split("T")[0];
-      const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-      let todayWords = 0;
-      for (const [filePath, scene] of this.sceneCache.entries()) {
-        const currentWordCount = scene.wordCount || 0;
-        const snapshot = this.dailyWordSnapshots.get(filePath);
-        const fileModTime = new Date(scene.lastModified);
-        const wasModifiedToday = fileModTime >= todayStart;
-        let baselineWordCount = 0;
-        let shouldCalculateIncrease = false;
-        if (snapshot) {
-          if (snapshot.date === todayDateString) {
-            if (wasModifiedToday) {
-              baselineWordCount = snapshot.wordCount;
-              shouldCalculateIncrease = true;
-            }
-          } else {
-            if (wasModifiedToday) {
-              baselineWordCount = snapshot.wordCount;
-              shouldCalculateIncrease = true;
-            }
-          }
-        } else {
-          if (wasModifiedToday) {
-            baselineWordCount = 0;
-            shouldCalculateIncrease = true;
-          }
-        }
-        if (shouldCalculateIncrease) {
-          const increase = Math.max(0, currentWordCount - baselineWordCount);
-          todayWords += increase;
-        }
-        const existingSnapshot = this.dailyWordSnapshots.get(filePath);
-        if (!existingSnapshot || existingSnapshot.date !== todayDateString) {
-          this.dailyWordSnapshots.set(filePath, {
-            date: todayDateString,
-            wordCount: currentWordCount
-          });
-        }
-      }
-      return Math.max(0, todayWords);
-    } catch (error) {
-      Logger.error("Failed to calculate today words", "ProjectService", error);
-      return 0;
-    }
-  }
-  /**
-   * 保存每日字数快照到项目文件
-   * Save daily word snapshots to project file
-   */
-  async saveDailyWordSnapshots() {
-    if (!this.currentProject || this.dailyWordSnapshots.size === 0) {
-      return;
-    }
-    try {
-      const dashboardPath = `${this.currentProject.rootPath}/_project.md`;
-      const dashboardFile = this.app.vault.getAbstractFileByPath(dashboardPath);
-      if (dashboardFile) {
-        const snapshotsData = {};
-        for (const [filePath, snapshot] of this.dailyWordSnapshots.entries()) {
-          snapshotsData[filePath] = snapshot;
-        }
-        await this.app.fileManager.processFrontMatter(dashboardFile, (frontmatter) => {
-          frontmatter.daily_word_snapshots = snapshotsData;
-          frontmatter.last_updated = this.getUTC8TimeString();
-        });
-      }
-    } catch (error) {
-      console.error("Failed to save daily word snapshots:", error);
-    }
   }
   /**
    * 智能解析场景索引信息
@@ -2720,42 +2949,6 @@ SORT file.name
     }
   }
   /**
-   * 从项目文件加载每日字数快照
-   * Load daily word snapshots from project file
-   */
-  async loadDailyWordSnapshots() {
-    if (!this.currentProject) {
-      return;
-    }
-    try {
-      const dashboardPath = `${this.currentProject.rootPath}/_project.md`;
-      const dashboardFile = this.app.vault.getAbstractFileByPath(dashboardPath);
-      if (dashboardFile) {
-        const fileCache = this.app.metadataCache.getFileCache(dashboardFile);
-        const frontmatter = fileCache == null ? void 0 : fileCache.frontmatter;
-        if (frontmatter && frontmatter.daily_word_snapshots) {
-          const snapshotsData = frontmatter.daily_word_snapshots;
-          const sevenDaysAgo = new Date();
-          sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-          const sevenDaysAgoString = sevenDaysAgo.toISOString().split("T")[0];
-          for (const [filePath, snapshot] of Object.entries(snapshotsData)) {
-            if (typeof snapshot === "object" && snapshot !== null && "date" in snapshot && "wordCount" in snapshot) {
-              const typedSnapshot = snapshot;
-              if (typedSnapshot.date >= sevenDaysAgoString) {
-                this.dailyWordSnapshots.set(filePath, {
-                  date: typedSnapshot.date,
-                  wordCount: typedSnapshot.wordCount
-                });
-              }
-            }
-          }
-        }
-      }
-    } catch (error) {
-      console.error("Failed to load daily word snapshots:", error);
-    }
-  }
-  /**
    * 计算章节数量
    * Calculate chapter count
    */
@@ -2860,7 +3053,6 @@ SORT file.name
     await this.flushPendingWordCountUpdates();
     this.disableFileSystemListener();
     this.resourceManager.clearAllDebounceTimers();
-    await this.saveDailyWordSnapshots();
     if (this.wordCountService) {
       await this.wordCountService.flushUpdates();
       this.wordCountService.destroy();
@@ -3219,7 +3411,6 @@ SORT file.name
       }
     }
     await this.updateProjectCurrentWordCount();
-    await this.saveDailyWordSnapshots();
   }
   /**
    * 更新项目当前字数
@@ -3229,10 +3420,11 @@ SORT file.name
     if (!this.currentProject) {
       return;
     }
+    const dashboardPath = `${this.currentProject.rootPath}/_project.md`;
+    const release = await this.fileLock.acquire(dashboardPath);
     try {
       const totalWords = this.calculateTotalWords();
       this.currentProject.currentWordCount = totalWords;
-      const dashboardPath = `${this.currentProject.rootPath}/_project.md`;
       const dashboardFile = this.app.vault.getAbstractFileByPath(dashboardPath);
       if (dashboardFile) {
         await this.app.fileManager.processFrontMatter(dashboardFile, (frontmatter) => {
@@ -3241,7 +3433,9 @@ SORT file.name
         });
       }
     } catch (error) {
-      console.error("Failed to update project current word count:", error);
+      Logger.error("Failed to update project current word count", "ProjectService", error);
+    } finally {
+      release();
     }
   }
   /**
@@ -3258,13 +3452,16 @@ SORT file.name
    * Update word count in scene file frontmatter
    */
   async updateSceneWordCountInFrontmatter(file, wordCount) {
+    const release = await this.fileLock.acquire(file.path);
     try {
       await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
         frontmatter.word_count = wordCount;
         frontmatter.last_updated = this.getUTC8TimeString();
       });
     } catch (error) {
-      console.error(`Failed to update frontmatter for ${file.path}:`, error);
+      Logger.error(`Failed to update frontmatter for ${file.path}`, "ProjectService", error);
+    } finally {
+      release();
     }
   }
   /**
@@ -3620,6 +3817,148 @@ SORT file.name
       return folderName;
     }
     return withoutPrefix || folderName;
+  }
+  // ===========================================================================
+  // 项目注册表相关方法
+  // Projects Registry Related Methods
+  // ===========================================================================
+  /**
+   * 获取项目注册表服务实例
+   * Get projects registry service instance
+   */
+  getRegistryService() {
+    return this.registryService;
+  }
+  /**
+   * 初始化注册表（插件加载时调用）
+   * Initialize registry (called when plugin loads)
+   */
+  async initRegistry() {
+    await this.registryService.loadRegistry();
+    Logger.info("Projects registry initialized", "ProjectService");
+  }
+  /**
+   * 同步当前项目到注册表
+   * Sync current project to registry
+   */
+  async syncProjectToRegistry() {
+    if (!this.currentProject) {
+      return;
+    }
+    try {
+      const stats = this.getProjectStats();
+      const existing = await this.registryService.getProjectByPath(this.currentProject.rootPath);
+      if (existing) {
+        await this.registryService.updateProjectRecord(existing.id, {
+          name: this.currentProject.name,
+          status: this.currentProject.status,
+          lastAccessedAt: new Date().toISOString(),
+          lastModifiedAt: this.currentProject.lastModified.toISOString(),
+          stats: {
+            totalWords: stats.totalWords,
+            targetWordCount: this.currentProject.targetWordCount,
+            chapterCount: stats.chapterCount,
+            sceneCount: stats.sceneCount,
+            characterCount: stats.characterCount,
+            locationCount: stats.locationCount
+          }
+        });
+      } else {
+        await this.registryService.registerProject(
+          this.currentProject.name,
+          this.currentProject.rootPath,
+          this.currentProject.status,
+          {
+            totalWords: stats.totalWords,
+            targetWordCount: this.currentProject.targetWordCount,
+            chapterCount: stats.chapterCount,
+            sceneCount: stats.sceneCount,
+            characterCount: stats.characterCount,
+            locationCount: stats.locationCount
+          }
+        );
+      }
+    } catch (error) {
+      Logger.error("Failed to sync project to registry", "ProjectService", error);
+    }
+  }
+  /**
+   * 获取所有已注册的项目列表
+   * Get all registered projects
+   */
+  async listProjects() {
+    return this.registryService.listProjects();
+  }
+  /**
+   * 获取最近访问的项目
+   * Get recently accessed projects
+   */
+  async getRecentProjects(limit = 10) {
+    return this.registryService.getRecentProjects(limit);
+  }
+  /**
+   * 搜索项目
+   * Search projects by name
+   */
+  async searchProjects(query) {
+    return this.registryService.searchProjects(query);
+  }
+  /**
+   * 删除项目
+   * Delete project with specified options
+   */
+  async deleteProject(projectId, options) {
+    try {
+      const record = await this.registryService.getProjectById(projectId);
+      if (!record) {
+        throw ErrorHandler.createError(
+          "PROJECT" /* PROJECT */,
+          "PROJECT_NOT_FOUND",
+          `Project not found in registry: ${projectId}`
+        );
+      }
+      if (this.currentProject && this.currentProject.rootPath === record.path) {
+        await this.unloadCurrentProject();
+      }
+      if (!options.removeFromRegistryOnly) {
+        const folder = this.app.vault.getAbstractFileByPath(record.path);
+        if (folder) {
+          if (options.moveToTrash) {
+            await this.app.vault.trash(folder, true);
+            Logger.info(`Project moved to trash: ${record.path}`, "ProjectService");
+          } else {
+            await this.app.vault.delete(folder, true);
+            Logger.info(`Project deleted permanently: ${record.path}`, "ProjectService");
+          }
+        }
+      }
+      await this.registryService.unregisterProject(projectId);
+      Logger.info(`Project removed from registry: ${record.name}`, "ProjectService");
+    } catch (error) {
+      ErrorHandler.handle(error, "ProjectService.deleteProject");
+      throw error;
+    }
+  }
+  /**
+   * 验证注册表中的项目路径
+   * Validate project paths in registry
+   */
+  async validateRegistry() {
+    return this.registryService.validateRegistry();
+  }
+  /**
+   * 清理无效的项目记录
+   * Clean up invalid project records
+   */
+  async cleanupInvalidRecords() {
+    return this.registryService.cleanupInvalidRecords();
+  }
+  /**
+   * 扫描并注册未注册的项目
+   * Scan and register unregistered projects
+   */
+  async scanAndRegisterProjects() {
+    return this.registryService.scanAndRegisterProjects();
   }
 };
 var ProjectService = _ProjectService;
@@ -5033,9 +5372,6 @@ var DashboardRenderer = class extends import_obsidian4.Component {
         return;
       }
       console.log("Replacing placeholders with stats:", stats);
-      const dailyTarget = project.dailyTarget || Math.round(project.targetWordCount / 365);
-      const todayWords = stats.todayWords;
-      const remainingWords = Math.max(0, dailyTarget - todayWords);
       const statusInfo = this.projectService.getProjectStatusInfo(project.status);
       const statusDisplay = `${statusInfo.icon} ${statusInfo.label} (${statusInfo.progress}%)`;
       const walker = document.createTreeWalker(
@@ -5052,9 +5388,6 @@ var DashboardRenderer = class extends import_obsidian4.Component {
       }
       textNodes.forEach((textNode) => {
         let content = textNode.textContent || "";
-        content = content.replace(/\{\{DAILY_TARGET\}\}/g, dailyTarget.toString());
-        content = content.replace(/\{\{TODAY_WORDS\}\}/g, todayWords.toString());
-        content = content.replace(/\{\{REMAINING_WORDS\}\}/g, remainingWords.toString());
         content = content.replace(/\{\{PROJECT_STATUS\}\}/g, statusDisplay);
         if (content.includes("{{PROJECT_STATUS_SWITCHER}}")) {
           content = content.replace(/\{\{PROJECT_STATUS_SWITCHER\}\}/g, "");
@@ -5074,6 +5407,48 @@ var DashboardRenderer = class extends import_obsidian4.Component {
           textNode.textContent = content;
           const tempDiv = document.createElement("div");
           tempDiv.innerHTML = chapterStatsHtml;
+          const parent = textNode.parentNode;
+          if (parent) {
+            while (tempDiv.firstChild) {
+              parent.insertBefore(tempDiv.firstChild, textNode.nextSibling);
+            }
+          }
+          return;
+        }
+        if (content.includes("{{SCENE_STATUS_DISTRIBUTION}}")) {
+          const sceneStatusHtml = this.generateSceneStatusDistribution();
+          content = content.replace(/\{\{SCENE_STATUS_DISTRIBUTION\}\}/g, "");
+          textNode.textContent = content;
+          const tempDiv = document.createElement("div");
+          tempDiv.innerHTML = sceneStatusHtml;
+          const parent = textNode.parentNode;
+          if (parent) {
+            while (tempDiv.firstChild) {
+              parent.insertBefore(tempDiv.firstChild, textNode.nextSibling);
+            }
+          }
+          return;
+        }
+        if (content.includes("{{CHARACTER_LIST}}")) {
+          const characterListHtml = this.generateCharacterList();
+          content = content.replace(/\{\{CHARACTER_LIST\}\}/g, "");
+          textNode.textContent = content;
+          const tempDiv = document.createElement("div");
+          tempDiv.innerHTML = characterListHtml;
+          const parent = textNode.parentNode;
+          if (parent) {
+            while (tempDiv.firstChild) {
+              parent.insertBefore(tempDiv.firstChild, textNode.nextSibling);
+            }
+          }
+          return;
+        }
+        if (content.includes("{{LOCATION_LIST}}")) {
+          const locationListHtml = this.generateLocationList();
+          content = content.replace(/\{\{LOCATION_LIST\}\}/g, "");
+          textNode.textContent = content;
+          const tempDiv = document.createElement("div");
+          tempDiv.innerHTML = locationListHtml;
           const parent = textNode.parentNode;
           if (parent) {
             while (tempDiv.firstChild) {
@@ -5258,16 +5633,7 @@ var DashboardRenderer = class extends import_obsidian4.Component {
       }
       textNodes.forEach((textNode) => {
         let content = textNode.textContent || "";
-        if (content.includes("\u65E5\u5747\u76EE\u6807") && content.includes("(disabled; enable in settings)")) {
-          const dailyTarget = project.dailyTarget || Math.round(project.targetWordCount / 365);
-          content = content.replace(/\(disabled; enable in settings\)/, `${dailyTarget}`);
-        } else if (content.includes("\u4ECA\u65E5\u603B\u5B57\u6570") && content.includes("(disabled; enable in settings)")) {
-          content = content.replace(/\(disabled; enable in settings\)/, `${stats.todayWords}`);
-        } else if (content.includes("\u5269\u4F59\u5B57\u6570") && content.includes("(disabled; enable in settings)")) {
-          const dailyTarget = project.dailyTarget || Math.round(project.targetWordCount / 365);
-          const remainingWords = Math.max(0, dailyTarget - stats.todayWords);
-          content = content.replace(/\(disabled; enable in settings\)/, `${remainingWords}`);
-        } else if (content.includes("10_\u7A3F\u4EF6")) {
+        if (content.includes("10_\u7A3F\u4EF6")) {
           if (content.includes("(disabled; enable in settings)")) {
             content = content.replace(/.*\(disabled; enable in settings\).*/, `${stats.sceneCount} \u4E2A\u6587\u4EF6`);
           } else if (content.includes("dv.pages") || content.includes("$=")) {
@@ -5297,16 +5663,7 @@ var DashboardRenderer = class extends import_obsidian4.Component {
       const codeElements = element.querySelectorAll("code");
       codeElements.forEach((codeEl) => {
         let content = codeEl.textContent || "";
-        if (content.includes("today_words")) {
-          codeEl.textContent = stats.todayWords.toString();
-        } else if (content.includes("remaining_words")) {
-          const dailyTarget = project.dailyTarget || Math.round(project.targetWordCount / 365);
-          const remainingWords = Math.max(0, dailyTarget - stats.todayWords);
-          codeEl.textContent = remainingWords.toString();
-        } else if (content.includes("Math.round") && content.includes("365")) {
-          const dailyTarget = project.dailyTarget || Math.round(project.targetWordCount / 365);
-          codeEl.textContent = dailyTarget.toString();
-        } else if (content.includes("dv.pages") || content.includes("$=")) {
+        if (content.includes("dv.pages") || content.includes("$=")) {
           if (content.includes("10_\u7A3F\u4EF6") && content.includes(".length")) {
             codeEl.textContent = stats.sceneCount.toString();
           } else if (content.includes("20_\u89D2\u8272") && content.includes(".length")) {
@@ -5366,7 +5723,6 @@ var DashboardRenderer = class extends import_obsidian4.Component {
         border: 1px solid var(--background-modifier-border);
       `;
       this.createStatCard(statsContainer, "\u603B\u5B57\u6570", stats.totalWords.toLocaleString(), "\u{1F4DD}");
-      this.createStatCard(statsContainer, "\u4ECA\u65E5\u65B0\u589E", stats.todayWords.toLocaleString(), "\u270D\uFE0F");
       this.createStatCard(statsContainer, "\u9879\u76EE\u8FDB\u5EA6", `${Math.round(stats.progress * 100)}%`, "\u{1F4CA}");
       this.createStatCard(statsContainer, "\u7AE0\u8282\u6570", stats.chapterCount.toString(), "\u{1F4DA}");
       this.createStatCard(statsContainer, "\u573A\u666F\u6570", stats.sceneCount.toString(), "\u{1F3AC}");
@@ -5664,18 +6020,7 @@ var DashboardRenderer = class extends import_obsidian4.Component {
       `;
       const barCanvas = this.createElement("canvas", "progress-chart", barChartContainer);
       barCanvas.style.cssText = "width: 100%; height: 100%;";
-      const trendChartContainer = this.createElement("div", "chart-container", chartsContainer);
-      trendChartContainer.style.cssText = `
-        background: var(--background-primary);
-        border-radius: 6px;
-        padding: 15px;
-        height: 250px;
-        position: relative;
-        margin-top: 20px;
-      `;
-      const trendCanvas = this.createElement("canvas", "trend-chart", trendChartContainer);
-      trendCanvas.style.cssText = "width: 100%; height: 100%;";
-      this.renderActualCharts(pieCanvas, barCanvas, trendCanvas);
+      this.renderActualCharts(pieCanvas, barCanvas);
     } catch (error) {
       console.error("Failed to render statistics charts:", error);
       this.renderChartsError(container);
@@ -5745,12 +6090,11 @@ var DashboardRenderer = class extends import_obsidian4.Component {
    * 渲染实际的图表内容
    * Render actual chart content using HTML/CSS
    */
-  renderActualCharts(pieCanvas, barCanvas, trendCanvas) {
+  renderActualCharts(pieCanvas, barCanvas) {
     try {
       const stats = this.projectService.getProjectStats();
       this.renderWordDistributionChart(pieCanvas, stats);
       this.renderProgressBarChart(barCanvas, stats);
-      this.renderTrendChart(trendCanvas, stats);
     } catch (error) {
       console.error("Failed to render charts:", error);
       this.renderChartsPlaceholder(pieCanvas.parentElement);
@@ -5864,8 +6208,8 @@ var DashboardRenderer = class extends import_obsidian4.Component {
     `;
     const totalWords = this.createElement("div", "", statsDisplay);
     totalWords.textContent = `\u603B\u5B57\u6570: ${stats.totalWords.toLocaleString()}`;
-    const todayWords = this.createElement("div", "", statsDisplay);
-    todayWords.textContent = `\u4ECA\u65E5: ${stats.todayWords.toLocaleString()}`;
+    const sceneCount = this.createElement("div", "", statsDisplay);
+    sceneCount.textContent = `\u573A\u666F: ${stats.sceneCount}`;
   }
   /**
    * 创建进度条项目
@@ -5892,61 +6236,6 @@ var DashboardRenderer = class extends import_obsidian4.Component {
       background: ${color};
       transition: width 0.3s ease;
     `;
-  }
-  /**
-   * 渲染写作趋势图
-   * Render writing trend chart
-   */
-  renderTrendChart(canvas, stats) {
-    const container = canvas.parentElement;
-    container.removeChild(canvas);
-    const title = this.createElement("h4", "chart-title", container);
-    title.textContent = "\u{1F4CA} \u5199\u4F5C\u8D8B\u52BF";
-    title.style.cssText = "margin: 0 0 15px 0; text-align: center; color: var(--text-accent);";
-    const trendContainer = this.createElement("div", "trend-display", container);
-    trendContainer.style.cssText = `
-      display: flex;
-      justify-content: space-around;
-      align-items: end;
-      height: 150px;
-      padding: 20px;
-      border-bottom: 1px solid var(--background-modifier-border);
-      position: relative;
-    `;
-    const weekData = [
-      { day: "\u5468\u4E00", words: Math.floor(Math.random() * 1e3) + 500 },
-      { day: "\u5468\u4E8C", words: Math.floor(Math.random() * 1e3) + 600 },
-      { day: "\u5468\u4E09", words: Math.floor(Math.random() * 1e3) + 400 },
-      { day: "\u5468\u56DB", words: Math.floor(Math.random() * 1e3) + 800 },
-      { day: "\u5468\u4E94", words: Math.floor(Math.random() * 1e3) + 700 },
-      { day: "\u5468\u516D", words: Math.floor(Math.random() * 1e3) + 900 },
-      { day: "\u5468\u65E5", words: stats.todayWords || 300 }
-    ];
-    const maxWords = Math.max(...weekData.map((d) => d.words));
-    weekData.forEach((data, index) => {
-      const barContainer = this.createElement("div", "trend-bar-container", trendContainer);
-      barContainer.style.cssText = `
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: 5px;
-      `;
-      const bar = this.createElement("div", "trend-bar", barContainer);
-      const height = data.words / maxWords * 100;
-      bar.style.cssText = `
-        width: 20px;
-        height: ${height}px;
-        background: linear-gradient(to top, #4CAF50, #81C784);
-        border-radius: 2px;
-        position: relative;
-      `;
-      const label = this.createElement("div", "trend-label", barContainer);
-      label.textContent = data.day;
-      label.style.cssText = "font-size: 10px; color: var(--text-muted);";
-      const value = this.createElement("div", "trend-value", barContainer);
-      value.textContent = data.words.toString();
-      value.style.cssText = "font-size: 9px; color: var(--text-muted);";
-    });
   }
   /**
    * 渲染图表占位符
@@ -6087,6 +6376,231 @@ var DashboardRenderer = class extends import_obsidian4.Component {
       return `
         <div style="padding: 20px; text-align: center; color: var(--text-error); background: var(--background-secondary); border-radius: 6px; margin: 10px 0;">
           \u7AE0\u8282\u7EDF\u8BA1\u751F\u6210\u5931\u8D25
+        </div>
+      `;
+    }
+  }
+  /**
+   * 生成场景状态分布表格
+   * Generate scene status distribution table
+   */
+  generateSceneStatusDistribution() {
+    try {
+      const scenes = this.projectService.getAllScenes();
+      if (scenes.length === 0) {
+        return `
+          <div style="padding: 20px; text-align: center; color: var(--text-muted); background: var(--background-secondary); border-radius: 6px; margin: 10px 0;">
+            \u6682\u65E0\u573A\u666F\u6570\u636E
+          </div>
+        `;
+      }
+      const statusCounts = {
+        outline: 0,
+        draft: 0,
+        revised: 0,
+        complete: 0
+      };
+      scenes.forEach((scene) => {
+        const status = scene.status || "outline";
+        if (statusCounts.hasOwnProperty(status)) {
+          statusCounts[status]++;
+        }
+      });
+      const statusConfig = {
+        outline: { icon: "\u{1F4DD}", label: "\u5927\u7EB2", color: "#94a3b8" },
+        draft: { icon: "\u270F\uFE0F", label: "\u521D\u7A3F", color: "#fbbf24" },
+        revised: { icon: "\u{1F4D6}", label: "\u4FEE\u6539", color: "#3b82f6" },
+        complete: { icon: "\u2705", label: "\u5B8C\u6210", color: "#10b981" }
+      };
+      let html = `
+        <div style="margin: 10px 0;">
+          <table style="width: 100%; border-collapse: collapse; background: var(--background-primary); border-radius: 6px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+            <thead>
+              <tr style="background: var(--background-secondary); border-bottom: 2px solid var(--background-modifier-border);">
+                <th style="padding: 12px 16px; text-align: left; font-weight: 600; color: var(--text-accent);">\u72B6\u6001</th>
+                <th style="padding: 12px 16px; text-align: center; font-weight: 600; color: var(--text-accent);">\u6570\u91CF</th>
+                <th style="padding: 12px 16px; text-align: left; font-weight: 600; color: var(--text-accent);">\u8FDB\u5EA6</th>
+              </tr>
+            </thead>
+            <tbody>
+      `;
+      const total = scenes.length;
+      let index = 0;
+      for (const [status, count] of Object.entries(statusCounts)) {
+        if (count === 0)
+          continue;
+        const config = statusConfig[status];
+        const percentage = Math.round(count / total * 100);
+        const isEven = index % 2 === 0;
+        const backgroundColor = isEven ? "var(--background-primary)" : "var(--background-secondary)";
+        html += `
+          <tr style="background: ${backgroundColor}; border-bottom: 1px solid var(--background-modifier-border);">
+            <td style="padding: 12px 16px; color: var(--text-normal);">
+              <span style="margin-right: 8px;">${config.icon}</span>
+              <span>${config.label}</span>
+            </td>
+            <td style="padding: 12px 16px; text-align: center; color: var(--text-normal); font-weight: 500;">${count}</td>
+            <td style="padding: 12px 16px;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <div style="flex: 1; height: 8px; background: var(--background-modifier-border); border-radius: 4px; overflow: hidden;">
+                  <div style="width: ${percentage}%; height: 100%; background: ${config.color}; border-radius: 4px;"></div>
+                </div>
+                <span style="color: var(--text-muted); font-size: 12px; min-width: 40px;">${percentage}%</span>
+              </div>
+            </td>
+          </tr>
+        `;
+        index++;
+      }
+      html += `
+            </tbody>
+          </table>
+          <div style="padding: 10px 16px; background: var(--background-secondary); border-radius: 0 0 6px 6px; text-align: center; color: var(--text-muted); font-size: 13px;">
+            \u5171 <strong style="color: var(--text-normal);">${total}</strong> \u4E2A\u573A\u666F
+          </div>
+        </div>
+      `;
+      return html;
+    } catch (error) {
+      console.error("Failed to generate scene status distribution:", error);
+      return `
+        <div style="padding: 20px; text-align: center; color: var(--text-error); background: var(--background-secondary); border-radius: 6px; margin: 10px 0;">
+          \u573A\u666F\u72B6\u6001\u5206\u5E03\u751F\u6210\u5931\u8D25
+        </div>
+      `;
+    }
+  }
+  /**
+   * 生成角色列表表格
+   * Generate character list table
+   */
+  generateCharacterList() {
+    try {
+      const characters = this.projectService.getAllCharacters();
+      if (characters.length === 0) {
+        return `
+          <div style="padding: 20px; text-align: center; color: var(--text-muted); background: var(--background-secondary); border-radius: 6px; margin: 10px 0;">
+            \u6682\u65E0\u89D2\u8272\u6570\u636E\u3002\u5728\u300C20_\u89D2\u8272\u300D\u6587\u4EF6\u5939\u4E2D\u521B\u5EFA\u89D2\u8272\u6587\u4EF6\u3002
+          </div>
+        `;
+      }
+      const sortedCharacters = [...characters].sort(
+        (a, b) => (a.name || "").localeCompare(b.name || "", "zh-CN")
+      );
+      let html = `
+        <div style="margin: 10px 0;">
+          <table style="width: 100%; border-collapse: collapse; background: var(--background-primary); border-radius: 6px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+            <thead>
+              <tr style="background: var(--background-secondary); border-bottom: 2px solid var(--background-modifier-border);">
+                <th style="padding: 12px 16px; text-align: left; font-weight: 600; color: var(--text-accent);">\u89D2\u8272</th>
+                <th style="padding: 12px 16px; text-align: center; font-weight: 600; color: var(--text-accent);">\u72B6\u6001</th>
+                <th style="padding: 12px 16px; text-align: center; font-weight: 600; color: var(--text-accent);">\u5E74\u9F84</th>
+                <th style="padding: 12px 16px; text-align: left; font-weight: 600; color: var(--text-accent);">\u9635\u8425</th>
+              </tr>
+            </thead>
+            <tbody>
+      `;
+      sortedCharacters.forEach((character, index) => {
+        var _a;
+        const isEven = index % 2 === 0;
+        const backgroundColor = isEven ? "var(--background-primary)" : "var(--background-secondary)";
+        const name = character.name || "\u672A\u547D\u540D";
+        const status = character.status || "-";
+        const age = character.age || "-";
+        const faction = character.faction || "-";
+        const filePath = character.path || "";
+        const fileName = ((_a = filePath.split("/").pop()) == null ? void 0 : _a.replace(".md", "")) || name;
+        html += `
+          <tr style="background: ${backgroundColor}; border-bottom: 1px solid var(--background-modifier-border); cursor: pointer;" 
+              onclick="app.workspace.openLinkText('${filePath}', '', true)">
+            <td style="padding: 12px 16px; color: var(--text-normal);">
+              <a href="${filePath}" style="color: var(--text-accent); text-decoration: none;" onclick="event.preventDefault();">${name}</a>
+            </td>
+            <td style="padding: 12px 16px; text-align: center; color: var(--text-muted);">${status}</td>
+            <td style="padding: 12px 16px; text-align: center; color: var(--text-muted);">${age}</td>
+            <td style="padding: 12px 16px; color: var(--text-muted);">${faction}</td>
+          </tr>
+        `;
+      });
+      html += `
+            </tbody>
+          </table>
+          <div style="padding: 10px 16px; background: var(--background-secondary); border-radius: 0 0 6px 6px; text-align: center; color: var(--text-muted); font-size: 13px;">
+            \u5171 <strong style="color: var(--text-normal);">${characters.length}</strong> \u4E2A\u89D2\u8272
+          </div>
+        </div>
+      `;
+      return html;
+    } catch (error) {
+      console.error("Failed to generate character list:", error);
+      return `
+        <div style="padding: 20px; text-align: center; color: var(--text-error); background: var(--background-secondary); border-radius: 6px; margin: 10px 0;">
+          \u89D2\u8272\u5217\u8868\u751F\u6210\u5931\u8D25
+        </div>
+      `;
+    }
+  }
+  /**
+   * 生成地点列表表格
+   * Generate location list table
+   */
+  generateLocationList() {
+    try {
+      const locations = this.projectService.getAllLocations();
+      if (locations.length === 0) {
+        return `
+          <div style="padding: 20px; text-align: center; color: var(--text-muted); background: var(--background-secondary); border-radius: 6px; margin: 10px 0;">
+            \u6682\u65E0\u5730\u70B9\u6570\u636E\u3002\u5728\u300C30_\u5730\u70B9\u300D\u6587\u4EF6\u5939\u4E2D\u521B\u5EFA\u5730\u70B9\u6587\u4EF6\u3002
+          </div>
+        `;
+      }
+      const sortedLocations = [...locations].sort(
+        (a, b) => (a.name || "").localeCompare(b.name || "", "zh-CN")
+      );
+      let html = `
+        <div style="margin: 10px 0;">
+          <table style="width: 100%; border-collapse: collapse; background: var(--background-primary); border-radius: 6px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+            <thead>
+              <tr style="background: var(--background-secondary); border-bottom: 2px solid var(--background-modifier-border);">
+                <th style="padding: 12px 16px; text-align: left; font-weight: 600; color: var(--text-accent);">\u5730\u70B9</th>
+                <th style="padding: 12px 16px; text-align: center; font-weight: 600; color: var(--text-accent);">\u533A\u57DF</th>
+                <th style="padding: 12px 16px; text-align: center; font-weight: 600; color: var(--text-accent);">\u91CD\u8981\u7A0B\u5EA6</th>
+              </tr>
+            </thead>
+            <tbody>
+      `;
+      sortedLocations.forEach((location, index) => {
+        const isEven = index % 2 === 0;
+        const backgroundColor = isEven ? "var(--background-primary)" : "var(--background-secondary)";
+        const name = location.name || "\u672A\u547D\u540D";
+        const region = location.region || "-";
+        const significance = location.significance || "-";
+        const filePath = location.path || "";
+        html += `
+          <tr style="background: ${backgroundColor}; border-bottom: 1px solid var(--background-modifier-border); cursor: pointer;"
+              onclick="app.workspace.openLinkText('${filePath}', '', true)">
+            <td style="padding: 12px 16px; color: var(--text-normal);">
+              <a href="${filePath}" style="color: var(--text-accent); text-decoration: none;" onclick="event.preventDefault();">${name}</a>
+            </td>
+            <td style="padding: 12px 16px; text-align: center; color: var(--text-muted);">${region}</td>
+            <td style="padding: 12px 16px; text-align: center; color: var(--text-muted);">${significance}</td>
+          </tr>
+        `;
+      });
+      html += `
+            </tbody>
+          </table>
+          <div style="padding: 10px 16px; background: var(--background-secondary); border-radius: 0 0 6px 6px; text-align: center; color: var(--text-muted); font-size: 13px;">
+            \u5171 <strong style="color: var(--text-normal);">${locations.length}</strong> \u4E2A\u5730\u70B9
+          </div>
+        </div>
+      `;
+      return html;
+    } catch (error) {
+      console.error("Failed to generate location list:", error);
+      return `
+        <div style="padding: 20px; text-align: center; color: var(--text-error); background: var(--background-secondary); border-radius: 6px; margin: 10px 0;">
+          \u5730\u70B9\u5217\u8868\u751F\u6210\u5931\u8D25
         </div>
       `;
     }
@@ -8951,6 +9465,8 @@ var _CorkboardView = class extends import_obsidian9.ItemView {
     this.isDragging = false;
     this.draggedCard = null;
     this.draggedSceneData = null;
+    /** 拖拽操作锁，防止并发拖拽 */
+    this.isDragOperationInProgress = false;
     /** 渲染防抖定时器 */
     this.renderDebounceTimer = null;
     /** 上次渲染的场景数量，用于智能刷新 */
@@ -8985,9 +9501,9 @@ var _CorkboardView = class extends import_obsidian9.ItemView {
    * Called when view is opened
    */
   async onOpen() {
-    console.log("CorkboardView opened");
+    Logger.info("CorkboardView opened", "CorkboardView");
     if (!this.projectService.currentProject) {
-      console.log("No project loaded, attempting auto-load...");
+      Logger.info("No project loaded, attempting auto-load", "CorkboardView");
       await this.projectService.autoLoadProject();
     }
     this.renderBoard();
@@ -8997,7 +9513,7 @@ var _CorkboardView = class extends import_obsidian9.ItemView {
    * Called when view is closed
    */
   async onClose() {
-    console.log("CorkboardView closed");
+    Logger.info("CorkboardView closed", "CorkboardView");
     this.cleanup();
   }
   /**
@@ -9034,12 +9550,10 @@ var _CorkboardView = class extends import_obsidian9.ItemView {
   smartRender() {
     const currentSceneCount = this.projectService.getAllScenes().length;
     if (this.needsForceRefresh || currentSceneCount !== this.lastRenderedSceneCount) {
-      console.log(`CorkboardView: Rendering (${this.lastRenderedSceneCount} -> ${currentSceneCount} scenes)`);
+      Logger.debug(`Rendering (${this.lastRenderedSceneCount} -> ${currentSceneCount} scenes)`, "CorkboardView");
       this.renderBoard();
       this.lastRenderedSceneCount = currentSceneCount;
       this.needsForceRefresh = false;
-    } else {
-      console.log("CorkboardView: Skipping render (no changes detected)");
     }
   }
   /**
@@ -9290,14 +9804,27 @@ var _CorkboardView = class extends import_obsidian9.ItemView {
    * Handle card drop
    */
   async handleCardDrop(draggedScene, targetChapter, event) {
+    if (this.isDragOperationInProgress) {
+      Logger.warn("Drag operation already in progress, ignoring drop", "CorkboardView");
+      new import_obsidian9.Notice("\u64CD\u4F5C\u8FDB\u884C\u4E2D\uFF0C\u8BF7\u7A0D\u5019");
+      return;
+    }
+    this.isDragOperationInProgress = true;
+    const snapshot = this.createSceneSnapshot(draggedScene.path);
     try {
       const insertIndex = this.calculateInsertIndex(event, targetChapter);
-      console.log(`Moving scene ${draggedScene.title} to chapter ${targetChapter.index} at position ${insertIndex}`);
+      Logger.info(`Moving scene ${draggedScene.title} to chapter ${targetChapter.index} at position ${insertIndex}`, "CorkboardView");
       await this.moveSceneToChapter(draggedScene, targetChapter.index, insertIndex);
-      this.renderBoard();
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      this.forceRefresh();
+      new import_obsidian9.Notice(`\u573A\u666F\u300C${draggedScene.title}\u300D\u5DF2\u79FB\u52A8`);
     } catch (error) {
-      console.error("Failed to handle card drop:", error);
-      this.showErrorMessage("\u573A\u666F\u79FB\u52A8\u5931\u8D25: " + error.message);
+      Logger.error("Failed to handle card drop", "CorkboardView", error);
+      await this.rollbackScene(snapshot);
+      new import_obsidian9.Notice(`\u573A\u666F\u79FB\u52A8\u5931\u8D25: ${error.message}`);
+      this.forceRefresh();
+    } finally {
+      this.isDragOperationInProgress = false;
     }
   }
   /**
@@ -9338,22 +9865,28 @@ var _CorkboardView = class extends import_obsidian9.ItemView {
    */
   async reorderSceneInChapter(scene, newIndex) {
     const chapterScenes = this.projectService.getAllScenes().filter((s) => s.chapterIndex === scene.chapterIndex).sort((a, b) => a.sceneIndex - b.sceneIndex);
-    let currentIndex = 1;
-    for (const chapterScene of chapterScenes) {
-      if (chapterScene.path === scene.path) {
-        continue;
+    const otherScenes = chapterScenes.filter((s) => s.path !== scene.path);
+    const clampedIndex = Math.min(Math.max(1, newIndex), otherScenes.length + 1);
+    const reordered = [];
+    let pos = 1;
+    let sceneInserted = false;
+    for (const otherScene of otherScenes) {
+      if (pos === clampedIndex && !sceneInserted) {
+        reordered.push({ path: scene.path, sceneIndex: pos });
+        pos++;
+        sceneInserted = true;
       }
-      if (currentIndex === newIndex) {
-        await this.updateSceneIndex(scene, currentIndex);
-        currentIndex++;
-      }
-      if (chapterScene.sceneIndex !== currentIndex) {
-        await this.updateSceneIndex(chapterScene, currentIndex);
-      }
-      currentIndex++;
+      reordered.push({ path: otherScene.path, sceneIndex: pos });
+      pos++;
     }
-    if (newIndex > chapterScenes.length) {
-      await this.updateSceneIndex(scene, currentIndex);
+    if (!sceneInserted) {
+      reordered.push({ path: scene.path, sceneIndex: pos });
+    }
+    for (const item of reordered) {
+      const currentScene = chapterScenes.find((s) => s.path === item.path);
+      if (currentScene && currentScene.sceneIndex !== item.sceneIndex) {
+        await this.updateSceneIndex(currentScene, item.sceneIndex);
+      }
     }
   }
   /**
@@ -9361,14 +9894,17 @@ var _CorkboardView = class extends import_obsidian9.ItemView {
    * Move scene between different chapters
    */
   async moveSceneBetweenChapters(scene, targetChapterIndex, insertIndex) {
-    const targetChapterScenes = this.projectService.getAllScenes().filter((s) => s.chapterIndex === targetChapterIndex).sort((a, b) => a.sceneIndex - b.sceneIndex);
+    const originalChapterIndex = scene.chapterIndex;
+    const targetChapterScenes = this.projectService.getAllScenes().filter((s) => s.chapterIndex === targetChapterIndex && s.path !== scene.path).sort((a, b) => a.sceneIndex - b.sceneIndex);
     for (const targetScene of targetChapterScenes) {
       if (targetScene.sceneIndex >= insertIndex) {
         await this.updateSceneIndex(targetScene, targetScene.sceneIndex + 1);
       }
     }
     await this.updateSceneChapterAndIndex(scene, targetChapterIndex, insertIndex);
-    await this.reindexChapterScenes(scene.chapterIndex);
+    if (originalChapterIndex !== targetChapterIndex) {
+      await this.reindexChapterScenes(originalChapterIndex);
+    }
   }
   /**
    * 更新场景的章节和索引
@@ -9424,6 +9960,16 @@ var _CorkboardView = class extends import_obsidian9.ItemView {
     const titleMatch = fileName.match(/^\d+-\d+\s+(.+)\.md$/);
     const title = titleMatch ? titleMatch[1] : scene.title;
     const newFileName = `${chapterIndex.toString().padStart(2, "0")}-${sceneIndex.toString().padStart(2, "0")} ${title}.md`;
+    const scenesFolder = "10_\u7A3F\u4EF6";
+    const scenesFolderIndex = pathParts.findIndex((part) => part === scenesFolder);
+    if (scenesFolderIndex >= 0) {
+      const basePath = pathParts.slice(0, scenesFolderIndex + 1);
+      const afterScenesParts = pathParts.slice(scenesFolderIndex + 1, -1);
+      if (afterScenesParts.length > 0) {
+        const newPathParts2 = [...basePath, ...afterScenesParts, newFileName];
+        return newPathParts2.join("/");
+      }
+    }
     const newPathParts = [...pathParts];
     newPathParts[newPathParts.length - 1] = newFileName;
     return newPathParts.join("/");
@@ -9437,10 +9983,12 @@ var _CorkboardView = class extends import_obsidian9.ItemView {
       const file = this.app.vault.getAbstractFileByPath(oldPath);
       if (file) {
         await this.app.vault.rename(file, newPath);
-        console.log(`Moved scene file from ${oldPath} to ${newPath}`);
+        Logger.info(`Moved scene file from ${oldPath} to ${newPath}`, "CorkboardView");
+      } else {
+        Logger.warn(`Scene file not found for move: ${oldPath}`, "CorkboardView");
       }
     } catch (error) {
-      console.error(`Failed to move scene file from ${oldPath} to ${newPath}:`, error);
+      Logger.error(`Failed to move scene file from ${oldPath} to ${newPath}`, "CorkboardView", error);
       throw error;
     }
   }
@@ -9506,28 +10054,44 @@ var _CorkboardView = class extends import_obsidian9.ItemView {
     }
   }
   /**
-   * 显示错误消息
-   * Show error message
+   * 创建场景元数据快照（用于回滚）
+   * Create scene metadata snapshot for rollback
    */
-  showErrorMessage(message) {
-    const errorEl = this.containerEl.createDiv("corkboard-error-message");
-    errorEl.textContent = message;
-    errorEl.style.cssText = `
-      position: absolute;
-      top: 10px;
-      right: 10px;
-      background: var(--background-modifier-error);
-      color: var(--text-on-accent);
-      padding: 8px 12px;
-      border-radius: 4px;
-      z-index: 1000;
-      font-size: 0.9em;
-    `;
-    setTimeout(() => {
-      if (errorEl.parentNode) {
-        errorEl.parentNode.removeChild(errorEl);
+  createSceneSnapshot(scenePath) {
+    const scene = this.projectService.getAllScenes().find((s) => s.path === scenePath);
+    if (scene) {
+      return {
+        path: scene.path,
+        chapterIndex: scene.chapterIndex,
+        sceneIndex: scene.sceneIndex,
+        title: scene.title
+      };
+    }
+    return { path: scenePath, chapterIndex: -1, sceneIndex: -1, title: "" };
+  }
+  /**
+   * 回滚场景到快照状态
+   * Rollback scene to snapshot state
+   */
+  async rollbackScene(snapshot) {
+    if (snapshot.chapterIndex < 0) {
+      Logger.warn("Invalid snapshot, cannot rollback", "CorkboardView");
+      return;
+    }
+    try {
+      const currentFile = this.app.vault.getAbstractFileByPath(snapshot.path);
+      if (!currentFile) {
+        Logger.warn(`Snapshot file not found: ${snapshot.path}, attempting path search`, "CorkboardView");
+        return;
       }
-    }, 3e3);
+      await this.projectService.updateSceneMetadata(snapshot.path, {
+        chapterIndex: snapshot.chapterIndex,
+        sceneIndex: snapshot.sceneIndex
+      });
+      Logger.info(`Scene rolled back: ${snapshot.title}`, "CorkboardView");
+    } catch (error) {
+      Logger.error("Failed to rollback scene", "CorkboardView", error);
+    }
   }
   /**
    * 智能提取章节信息
@@ -9574,6 +10138,7 @@ var _CorkboardView = class extends import_obsidian9.ItemView {
       this.renderDebounceTimer = null;
     }
     this.isDragging = false;
+    this.isDragOperationInProgress = false;
     this.draggedCard = null;
     this.draggedSceneData = null;
     this.boardData = [];
@@ -10745,6 +11310,495 @@ var QuickCreatePanel = _QuickCreatePanel;
 /** 视图类型 */
 QuickCreatePanel.VIEW_TYPE = QUICK_CREATE_PANEL_VIEW_TYPE;
 
+// src/views/ProjectManagerView.ts
+var import_obsidian14 = require("obsidian");
+var _ProjectManagerView = class extends import_obsidian14.ItemView {
+  constructor(leaf, projectService) {
+    super(leaf);
+    /** 搜索输入框 */
+    this.searchInput = null;
+    /** 项目列表容器 */
+    this.projectListEl = null;
+    /** 当前搜索关键词 */
+    this.searchQuery = "";
+    /** 当前排序方式 */
+    this.sortBy = "lastAccessed";
+    this.projectService = projectService;
+  }
+  getViewType() {
+    return _ProjectManagerView.VIEW_TYPE;
+  }
+  getDisplayText() {
+    return "\u7EC7\u6587\u8005\u9879\u76EE\u7BA1\u7406";
+  }
+  getIcon() {
+    return "folder-search";
+  }
+  async onOpen() {
+    await this.render();
+  }
+  async onClose() {
+    this.containerEl.empty();
+  }
+  /**
+   * 刷新视图
+   * Refresh view
+   */
+  refresh() {
+    this.render();
+  }
+  /**
+   * 渲染视图主体
+   * Render main view
+   */
+  async render() {
+    const container = this.containerEl.children[1];
+    container.empty();
+    container.addClass("project-manager");
+    this.renderHeader(container);
+    this.renderToolbar(container);
+    await this.renderProjectList(container);
+  }
+  /**
+   * 渲染头部区域
+   * Render header area
+   */
+  renderHeader(container) {
+    const header = container.createDiv("project-manager-header");
+    const titleEl = header.createEl("h2", { text: "\u9879\u76EE\u7BA1\u7406" });
+    titleEl.addClass("project-manager-title");
+    const subtitleEl = header.createDiv("project-manager-subtitle");
+    subtitleEl.textContent = "\u7BA1\u7406\u60A8\u7684\u6240\u6709\u5199\u4F5C\u9879\u76EE";
+  }
+  /**
+   * 渲染工具栏
+   * Render toolbar with search and actions
+   */
+  renderToolbar(container) {
+    const toolbar = container.createDiv("project-manager-toolbar");
+    const searchWrapper = toolbar.createDiv("project-manager-search-wrapper");
+    this.searchInput = searchWrapper.createEl("input", {
+      type: "text",
+      placeholder: "\u641C\u7D22\u9879\u76EE...",
+      cls: "project-manager-search-input"
+    });
+    this.searchInput.value = this.searchQuery;
+    this.searchInput.addEventListener("input", () => {
+      var _a;
+      this.searchQuery = ((_a = this.searchInput) == null ? void 0 : _a.value) || "";
+      this.updateProjectList();
+    });
+    const sortWrapper = toolbar.createDiv("project-manager-sort-wrapper");
+    const sortLabel = sortWrapper.createEl("span", { text: "\u6392\u5E8F:", cls: "project-manager-sort-label" });
+    const sortSelect = sortWrapper.createEl("select", { cls: "project-manager-sort-select" });
+    const sortOptions = [
+      { value: "lastAccessed", label: "\u6700\u8FD1\u8BBF\u95EE" },
+      { value: "name", label: "\u540D\u79F0" },
+      { value: "createdAt", label: "\u521B\u5EFA\u65F6\u95F4" },
+      { value: "totalWords", label: "\u5B57\u6570" }
+    ];
+    for (const opt of sortOptions) {
+      const option = sortSelect.createEl("option", { value: opt.value, text: opt.label });
+      if (opt.value === this.sortBy) {
+        option.selected = true;
+      }
+    }
+    sortSelect.addEventListener("change", () => {
+      this.sortBy = sortSelect.value;
+      this.updateProjectList();
+    });
+    const actionsWrapper = toolbar.createDiv("project-manager-actions");
+    const scanBtn = actionsWrapper.createEl("button", {
+      text: "\u626B\u63CF\u9879\u76EE",
+      cls: "project-manager-action-btn project-manager-scan-btn"
+    });
+    scanBtn.addEventListener("click", async () => {
+      await this.handleScanProjects();
+    });
+    const refreshBtn = actionsWrapper.createEl("button", {
+      text: "\u5237\u65B0",
+      cls: "project-manager-action-btn project-manager-refresh-btn"
+    });
+    refreshBtn.addEventListener("click", async () => {
+      await this.handleRefresh();
+    });
+  }
+  /**
+   * 渲染项目列表
+   * Render project list
+   */
+  async renderProjectList(container) {
+    const listContainer = container.createDiv("project-manager-list");
+    this.projectListEl = listContainer;
+    await this.updateProjectList();
+  }
+  /**
+   * 更新项目列表内容
+   * Update project list content
+   */
+  async updateProjectList() {
+    var _a;
+    if (!this.projectListEl) {
+      return;
+    }
+    this.projectListEl.empty();
+    try {
+      let projects;
+      if (this.searchQuery.trim()) {
+        projects = await this.projectService.searchProjects(this.searchQuery.trim());
+      } else {
+        projects = await this.projectService.listProjects();
+      }
+      projects = this.sortProjects(projects);
+      if (projects.length === 0) {
+        this.renderEmptyState(this.projectListEl);
+        return;
+      }
+      const currentProjectPath = (_a = this.projectService.currentProject) == null ? void 0 : _a.rootPath;
+      for (const project of projects) {
+        this.renderProjectCard(this.projectListEl, project, project.path === currentProjectPath);
+      }
+    } catch (error) {
+      Logger.error("Failed to load project list", "ProjectManagerView", error);
+      this.projectListEl.createDiv("project-manager-error").textContent = "\u52A0\u8F7D\u9879\u76EE\u5217\u8868\u5931\u8D25\uFF0C\u8BF7\u7A0D\u540E\u91CD\u8BD5";
+    }
+  }
+  /**
+   * 排序项目列表
+   * Sort projects by current sort method
+   */
+  sortProjects(projects) {
+    const sorted = [...projects];
+    switch (this.sortBy) {
+      case "lastAccessed":
+        sorted.sort((a, b) => new Date(b.lastAccessedAt).getTime() - new Date(a.lastAccessedAt).getTime());
+        break;
+      case "name":
+        sorted.sort((a, b) => a.name.localeCompare(b.name, "zh-CN"));
+        break;
+      case "createdAt":
+        sorted.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        break;
+      case "totalWords":
+        sorted.sort((a, b) => b.stats.totalWords - a.stats.totalWords);
+        break;
+    }
+    return sorted;
+  }
+  /**
+   * 渲染空状态
+   * Render empty state
+   */
+  renderEmptyState(container) {
+    const emptyEl = container.createDiv("project-manager-empty");
+    const iconEl = emptyEl.createDiv("project-manager-empty-icon");
+    iconEl.textContent = "\u{1F4DA}";
+    const messageEl = emptyEl.createDiv("project-manager-empty-message");
+    messageEl.textContent = this.searchQuery.trim() ? "\u6CA1\u6709\u627E\u5230\u5339\u914D\u7684\u9879\u76EE" : "\u8FD8\u6CA1\u6709\u6CE8\u518C\u4EFB\u4F55\u9879\u76EE";
+    const hintEl = emptyEl.createDiv("project-manager-empty-hint");
+    hintEl.textContent = this.searchQuery.trim() ? "\u5C1D\u8BD5\u5176\u4ED6\u641C\u7D22\u5173\u952E\u8BCD" : "\u70B9\u51FB\u300C\u626B\u63CF\u9879\u76EE\u300D\u81EA\u52A8\u53D1\u73B0 Vault \u4E2D\u7684\u5199\u4F5C\u9879\u76EE\uFF0C\u6216\u521B\u5EFA\u4E00\u4E2A\u65B0\u9879\u76EE";
+  }
+  /**
+   * 渲染单个项目卡片
+   * Render a single project card
+   */
+  renderProjectCard(container, project, isActive) {
+    const card = container.createDiv("project-manager-card");
+    if (isActive) {
+      card.addClass("project-manager-card-active");
+    }
+    const cardHeader = card.createDiv("project-manager-card-header");
+    const nameEl = cardHeader.createDiv("project-manager-card-name");
+    nameEl.textContent = project.name;
+    if (isActive) {
+      const activeBadge = cardHeader.createDiv("project-manager-card-active-badge");
+      activeBadge.textContent = "\u5F53\u524D\u9879\u76EE";
+    }
+    const statusEl = cardHeader.createDiv("project-manager-card-status");
+    const statusInfo = this.getStatusDisplay(project.status);
+    statusEl.textContent = `${statusInfo.icon} ${statusInfo.label}`;
+    statusEl.addClass(`project-manager-status-${project.status}`);
+    const cardBody = card.createDiv("project-manager-card-body");
+    const statsGrid = cardBody.createDiv("project-manager-card-stats");
+    this.createStatItem(statsGrid, "\u{1F4DD} \u603B\u5B57\u6570", this.formatNumber(project.stats.totalWords));
+    this.createStatItem(statsGrid, "\u{1F3AF} \u76EE\u6807", this.formatNumber(project.stats.targetWordCount));
+    this.createStatItem(statsGrid, "\u{1F4D6} \u7AE0\u8282", `${project.stats.chapterCount}`);
+    this.createStatItem(statsGrid, "\u{1F3AC} \u573A\u666F", `${project.stats.sceneCount}`);
+    this.createStatItem(statsGrid, "\u{1F464} \u89D2\u8272", `${project.stats.characterCount}`);
+    this.createStatItem(statsGrid, "\u{1F4CD} \u5730\u70B9", `${project.stats.locationCount}`);
+    const progressWrapper = cardBody.createDiv("project-manager-card-progress-wrapper");
+    const progressLabel = progressWrapper.createDiv("project-manager-card-progress-label");
+    const progressPercent = project.stats.targetWordCount > 0 ? Math.round(project.stats.totalWords / project.stats.targetWordCount * 100) : 0;
+    progressLabel.textContent = `\u8FDB\u5EA6 ${progressPercent}%`;
+    const progressBar = progressWrapper.createDiv("project-manager-card-progress-bar");
+    const progressFill = progressBar.createDiv("project-manager-card-progress-fill");
+    progressFill.style.width = `${Math.min(progressPercent, 100)}%`;
+    const cardFooter = card.createDiv("project-manager-card-footer");
+    const timeInfo = cardFooter.createDiv("project-manager-card-time");
+    timeEl: {
+      const lastAccessed = this.formatRelativeTime(project.lastAccessedAt);
+      timeInfo.createSpan({ text: `\u6700\u8FD1\u8BBF\u95EE: ${lastAccessed}` });
+    }
+    const actions = cardFooter.createDiv("project-manager-card-actions");
+    const openBtn = actions.createEl("button", {
+      text: isActive ? "\u5DF2\u52A0\u8F7D" : "\u6253\u5F00",
+      cls: "project-manager-card-btn project-manager-card-btn-open"
+    });
+    openBtn.disabled = isActive;
+    openBtn.addEventListener("click", async () => {
+      await this.handleOpenProject(project);
+    });
+    const locateBtn = actions.createEl("button", {
+      text: "\u5B9A\u4F4D",
+      cls: "project-manager-card-btn project-manager-card-btn-locate"
+    });
+    locateBtn.addEventListener("click", () => {
+      this.handleLocateProject(project);
+    });
+    const deleteBtn = actions.createEl("button", {
+      text: "\u5220\u9664",
+      cls: "project-manager-card-btn project-manager-card-btn-delete"
+    });
+    deleteBtn.addEventListener("click", () => {
+      this.handleDeleteProject(project);
+    });
+  }
+  /**
+   * 创建统计项
+   * Create stat item element
+   */
+  createStatItem(parent, label, value) {
+    const item = parent.createDiv("project-manager-card-stat-item");
+    item.createDiv("project-manager-card-stat-label").textContent = label;
+    item.createDiv("project-manager-card-stat-value").textContent = value;
+  }
+  /**
+   * 获取项目状态显示信息
+   * Get project status display info
+   */
+  getStatusDisplay(status) {
+    const statusMap = {
+      planning: { icon: "\u{1F4DD}", label: "\u6784\u601D\u4E2D" },
+      drafting: { icon: "\u270F\uFE0F", label: "\u521D\u7A3F\u4E2D" },
+      revising: { icon: "\u{1F4D6}", label: "\u4FEE\u6539\u4E2D" },
+      editing: { icon: "\u{1F50D}", label: "\u6821\u5BF9\u4E2D" },
+      completed: { icon: "\u2705", label: "\u5DF2\u5B8C\u6210" }
+    };
+    return statusMap[status] || statusMap.planning;
+  }
+  /**
+   * 格式化数字显示
+   * Format number for display
+   */
+  formatNumber(num) {
+    if (num >= 1e4) {
+      return `${(num / 1e4).toFixed(1)}\u4E07`;
+    }
+    return num.toLocaleString("zh-CN");
+  }
+  /**
+   * 格式化相对时间
+   * Format relative time
+   */
+  formatRelativeTime(dateStr) {
+    const date = new Date(dateStr);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMinutes = Math.floor(diffMs / (1e3 * 60));
+    const diffHours = Math.floor(diffMs / (1e3 * 60 * 60));
+    const diffDays = Math.floor(diffMs / (1e3 * 60 * 60 * 24));
+    if (diffMinutes < 1) {
+      return "\u521A\u521A";
+    } else if (diffMinutes < 60) {
+      return `${diffMinutes}\u5206\u949F\u524D`;
+    } else if (diffHours < 24) {
+      return `${diffHours}\u5C0F\u65F6\u524D`;
+    } else if (diffDays < 30) {
+      return `${diffDays}\u5929\u524D`;
+    } else {
+      return date.toLocaleDateString("zh-CN");
+    }
+  }
+  // ===========================================================================
+  // 事件处理方法
+  // Event Handler Methods
+  // ===========================================================================
+  /**
+   * 处理打开项目
+   * Handle open project
+   */
+  async handleOpenProject(project) {
+    try {
+      await this.projectService.loadProject(project.path);
+      new import_obsidian14.Notice(`\u5DF2\u5207\u6362\u5230\u9879\u76EE: ${project.name}`);
+      await this.updateProjectList();
+    } catch (error) {
+      Logger.error("Failed to open project", "ProjectManagerView", error);
+      new import_obsidian14.Notice(`\u6253\u5F00\u9879\u76EE\u5931\u8D25: ${error.message}`);
+    }
+  }
+  /**
+   * 处理定位项目
+   * Handle locate project in file explorer
+   */
+  handleLocateProject(project) {
+    try {
+      const file = this.app.vault.getAbstractFileByPath(project.path);
+      if (file) {
+        this.app.commands.executeCommandById("file-explorer:reveal-in-nav", file);
+      } else {
+        const dashboardPath = `${project.path}/_project.md`;
+        const dashboardFile = this.app.vault.getAbstractFileByPath(dashboardPath);
+        if (dashboardFile) {
+          this.app.workspace.getLeaf(false).openFile(dashboardFile);
+        } else {
+          new import_obsidian14.Notice("\u9879\u76EE\u8DEF\u5F84\u4E0D\u5B58\u5728\uFF0C\u53EF\u80FD\u5DF2\u88AB\u79FB\u52A8\u6216\u5220\u9664");
+        }
+      }
+    } catch (error) {
+      const dashboardPath = `${project.path}/_project.md`;
+      const dashboardFile = this.app.vault.getAbstractFileByPath(dashboardPath);
+      if (dashboardFile) {
+        this.app.workspace.getLeaf(false).openFile(dashboardFile);
+      }
+    }
+  }
+  /**
+   * 处理删除项目
+   * Handle delete project
+   */
+  handleDeleteProject(project) {
+    const modal = new ProjectDeleteConfirmModal(
+      this.app,
+      project,
+      async (options) => {
+        try {
+          await this.projectService.deleteProject(project.id, options);
+          new import_obsidian14.Notice(`\u9879\u76EE\u300C${project.name}\u300D\u5DF2\u5220\u9664`);
+          await this.updateProjectList();
+        } catch (error) {
+          Logger.error("Failed to delete project", "ProjectManagerView", error);
+          new import_obsidian14.Notice(`\u5220\u9664\u9879\u76EE\u5931\u8D25: ${error.message}`);
+        }
+      }
+    );
+    modal.open();
+  }
+  /**
+   * 处理扫描项目
+   * Handle scan for projects
+   */
+  async handleScanProjects() {
+    try {
+      new import_obsidian14.Notice("\u6B63\u5728\u626B\u63CF\u9879\u76EE...");
+      const newlyRegistered = await this.projectService.scanAndRegisterProjects();
+      if (newlyRegistered.length > 0) {
+        new import_obsidian14.Notice(`\u53D1\u73B0\u5E76\u6CE8\u518C\u4E86 ${newlyRegistered.length} \u4E2A\u65B0\u9879\u76EE`);
+      } else {
+        new import_obsidian14.Notice("\u6CA1\u6709\u53D1\u73B0\u65B0\u7684\u9879\u76EE");
+      }
+      await this.updateProjectList();
+    } catch (error) {
+      Logger.error("Failed to scan projects", "ProjectManagerView", error);
+      new import_obsidian14.Notice("\u626B\u63CF\u9879\u76EE\u5931\u8D25");
+    }
+  }
+  /**
+   * 处理刷新
+   * Handle refresh
+   */
+  async handleRefresh() {
+    try {
+      const { invalid } = await this.projectService.validateRegistry();
+      if (invalid.length > 0) {
+        new import_obsidian14.Notice(`\u53D1\u73B0 ${invalid.length} \u4E2A\u65E0\u6548\u9879\u76EE\u8BB0\u5F55\uFF0C\u6B63\u5728\u6E05\u7406...`);
+        await this.projectService.cleanupInvalidRecords();
+      }
+      if (this.projectService.currentProject) {
+        try {
+          await this.projectService.loadProject(this.projectService.currentProject.rootPath);
+        } catch (e) {
+        }
+      }
+      await this.updateProjectList();
+      new import_obsidian14.Notice("\u9879\u76EE\u5217\u8868\u5DF2\u5237\u65B0");
+    } catch (error) {
+      Logger.error("Failed to refresh project list", "ProjectManagerView", error);
+      new import_obsidian14.Notice("\u5237\u65B0\u5931\u8D25");
+    }
+  }
+};
+var ProjectManagerView = _ProjectManagerView;
+/** 视图类型标识符 */
+ProjectManagerView.VIEW_TYPE = "story-weaver-project-manager";
+var ProjectDeleteConfirmModal = class extends import_obsidian14.Modal {
+  constructor(app, project, onConfirm) {
+    super(app);
+    this.project = project;
+    this.onConfirm = onConfirm;
+  }
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.empty();
+    contentEl.addClass("project-delete-modal");
+    contentEl.createEl("h2", { text: "\u5220\u9664\u9879\u76EE" });
+    contentEl.createDiv("project-delete-modal-warning").innerHTML = `\u786E\u5B9A\u8981\u5220\u9664\u9879\u76EE\u300C<strong>${this.project.name}</strong>\u300D\u5417\uFF1F`;
+    const pathInfo = contentEl.createDiv("project-delete-modal-path");
+    pathInfo.textContent = `\u8DEF\u5F84: ${this.project.path}`;
+    const optionsEl = contentEl.createDiv("project-delete-modal-options");
+    const option1 = optionsEl.createDiv("project-delete-modal-option");
+    const radio1 = option1.createEl("input");
+    radio1.type = "radio";
+    radio1.name = "deleteOption";
+    radio1.value = "trash";
+    radio1.checked = true;
+    option1.createEl("label", { text: "\u79FB\u5165\u7CFB\u7EDF\u56DE\u6536\u7AD9\uFF08\u63A8\u8350\uFF0C\u53EF\u6062\u590D\uFF09" });
+    radio1.addEventListener("click", () => {
+      radio2.checked = false;
+      radio3.checked = false;
+    });
+    const option2 = optionsEl.createDiv("project-delete-modal-option");
+    const radio2 = option2.createEl("input");
+    radio2.type = "radio";
+    radio2.name = "deleteOption";
+    radio2.value = "permanent";
+    option2.createEl("label", { text: "\u6C38\u4E45\u5220\u9664\u6587\u4EF6\uFF08\u4E0D\u53EF\u6062\u590D\uFF09" });
+    radio2.addEventListener("click", () => {
+      radio1.checked = false;
+      radio3.checked = false;
+    });
+    const option3 = optionsEl.createDiv("project-delete-modal-option");
+    const radio3 = option3.createEl("input");
+    radio3.type = "radio";
+    radio3.name = "deleteOption";
+    radio3.value = "registry";
+    option3.createEl("label", { text: "\u4EC5\u4ECE\u6CE8\u518C\u8868\u79FB\u9664\uFF08\u4FDD\u7559\u6587\u4EF6\uFF09" });
+    radio3.addEventListener("click", () => {
+      radio1.checked = false;
+      radio2.checked = false;
+    });
+    const buttonsEl = contentEl.createDiv("project-delete-modal-buttons");
+    const cancelBtn = buttonsEl.createEl("button", { text: "\u53D6\u6D88", cls: "project-delete-modal-cancel" });
+    cancelBtn.addEventListener("click", () => {
+      this.close();
+    });
+    const confirmBtn = buttonsEl.createEl("button", { text: "\u786E\u8BA4\u5220\u9664", cls: "project-delete-modal-confirm" });
+    confirmBtn.addEventListener("click", async () => {
+      var _a;
+      const selectedValue = ((_a = [radio1, radio2, radio3].find((r) => r.checked)) == null ? void 0 : _a.value) || "trash";
+      const options = {
+        moveToTrash: selectedValue === "trash",
+        removeFromRegistryOnly: selectedValue === "registry"
+      };
+      await this.onConfirm(options);
+      this.close();
+    });
+  }
+  onClose() {
+    this.contentEl.empty();
+  }
+};
+
 // main.ts
 var DEFAULT_SETTINGS = {
   defaultProjectPath: "",
@@ -10776,7 +11830,7 @@ var DEFAULT_SETTINGS = {
     updateThreshold: 10
   }
 };
-var StoryWeaverPlugin = class extends import_obsidian14.Plugin {
+var StoryWeaverPlugin = class extends import_obsidian15.Plugin {
   constructor() {
     super(...arguments);
     /** 项目切换防抖定时器 */
@@ -10787,7 +11841,6 @@ var StoryWeaverPlugin = class extends import_obsidian14.Plugin {
    * Called when the plugin is loaded
    */
   async onload() {
-    console.log("Loading Story Weaver Plugin...");
     await this.loadSettings();
     Logger.configure({
       level: this.settings.debugMode ? 0 /* DEBUG */ : 1 /* INFO */,
@@ -10800,6 +11853,7 @@ var StoryWeaverPlugin = class extends import_obsidian14.Plugin {
     await this.syncLicenseStatus();
     this.projectService = ProjectService.getInstance(this.app);
     this.projectService.updateSettings(this.settings);
+    await this.projectService.initRegistry();
     this.templateService = new TemplateService(this.app);
     this.dashboardRenderer = new DashboardRenderer(this.app, this.projectService);
     this.hoverPopup = new HoverPopup(this.app);
@@ -10814,7 +11868,7 @@ var StoryWeaverPlugin = class extends import_obsidian14.Plugin {
     this.app.workspace.onLayoutReady(() => {
       this.autoLoadProjectOnStartup();
     });
-    console.log("Story Weaver Plugin loaded successfully");
+    Logger.info("Story Weaver Plugin loaded successfully", "Main");
   }
   /**
    * 插件启动时自动加载项目
@@ -10822,16 +11876,16 @@ var StoryWeaverPlugin = class extends import_obsidian14.Plugin {
    */
   async autoLoadProjectOnStartup() {
     try {
-      console.log("Attempting to auto-load project on startup...");
+      Logger.debug("Attempting to auto-load project on startup...", "Main");
       const loaded = await this.projectService.autoLoadProject();
       if (loaded) {
-        console.log("Project auto-loaded successfully on startup");
+        Logger.info("Project auto-loaded successfully on startup", "Main");
         this.notifyViewsProjectLoaded();
       } else {
-        console.log("No project found to auto-load on startup");
+        Logger.debug("No project found to auto-load on startup", "Main");
       }
     } catch (error) {
-      console.error("Failed to auto-load project on startup:", error);
+      Logger.error("Failed to auto-load project on startup", "Main", error);
     }
   }
   /**
@@ -10857,16 +11911,22 @@ var StoryWeaverPlugin = class extends import_obsidian14.Plugin {
         leaf.view.refresh();
       }
     });
+    const projectManagerLeaves = this.app.workspace.getLeavesOfType("story-weaver-project-manager");
+    projectManagerLeaves.forEach((leaf) => {
+      if (leaf.view instanceof ProjectManagerView) {
+        leaf.view.refresh();
+      }
+    });
   }
   /**
    * 插件卸载时调用
    * Called when the plugin is unloaded
    */
   async onunload() {
-    console.log("Unloading Story Weaver Plugin...");
+    Logger.info("Unloading Story Weaver Plugin...", "Main");
     this.cleanup();
     await ProjectService.destroyInstance();
-    console.log("Story Weaver Plugin unloaded");
+    Logger.info("Story Weaver Plugin unloaded", "Main");
   }
   /**
    * 注册插件命令
@@ -10922,6 +11982,13 @@ var StoryWeaverPlugin = class extends import_obsidian14.Plugin {
         this.openQuickCreatePanel();
       }
     });
+    this.addCommand({
+      id: "open-project-manager-view",
+      name: "\u7EC7\u6587\u8005\uFF1A\u6253\u5F00\u9879\u76EE\u7BA1\u7406\u89C6\u56FE",
+      callback: () => {
+        this.openProjectManagerView();
+      }
+    });
   }
   /**
    * 注册自定义视图
@@ -10944,7 +12011,15 @@ var StoryWeaverPlugin = class extends import_obsidian14.Plugin {
       QuickCreatePanel.VIEW_TYPE,
       (leaf) => new QuickCreatePanel(leaf, this.projectService)
     );
-    console.log("Scene Info Panel, Outline View, Timeline View, and Quick Create Panel registered");
+    this.registerView(
+      CorkboardView.VIEW_TYPE,
+      (leaf) => new CorkboardView(leaf, this.projectService)
+    );
+    this.registerView(
+      ProjectManagerView.VIEW_TYPE,
+      (leaf) => new ProjectManagerView(leaf, this.projectService)
+    );
+    Logger.info("Scene Info Panel, Outline View, Timeline View, Corkboard View, Quick Create Panel, and Project Manager View registered", "Main");
   }
   /**
    * 注册左侧工具栏按钮
@@ -10954,7 +12029,7 @@ var StoryWeaverPlugin = class extends import_obsidian14.Plugin {
     this.addRibbonIcon("plus-circle", "\u5FEB\u901F\u521B\u5EFA\u9762\u677F", (evt) => {
       this.openQuickCreatePanel();
     });
-    console.log("Ribbon icons registered");
+    Logger.info("Ribbon icons registered", "Main");
   }
   /**
    * 注册 Markdown 后处理器
@@ -11019,7 +12094,7 @@ var StoryWeaverPlugin = class extends import_obsidian14.Plugin {
     if (this.immersiveWritingService) {
       this.immersiveWritingService.destroy();
     }
-    console.log("Cleanup completed");
+    Logger.debug("Cleanup completed", "Main");
   }
   /**
    * 创建新写作项目
@@ -11069,7 +12144,23 @@ var StoryWeaverPlugin = class extends import_obsidian14.Plugin {
    * Open corkboard view
    */
   async openCorkboardView() {
-    console.log("Open corkboard view - to be implemented in later tasks");
+    const { workspace } = this.app;
+    let leaf = null;
+    const leaves = workspace.getLeavesOfType(CorkboardView.VIEW_TYPE);
+    if (leaves.length > 0) {
+      leaf = leaves[0];
+    } else {
+      leaf = workspace.getLeaf(false);
+      if (leaf) {
+        await leaf.setViewState({
+          type: CorkboardView.VIEW_TYPE,
+          active: true
+        });
+      }
+    }
+    if (leaf) {
+      workspace.revealLeaf(leaf);
+    }
   }
   /**
    * 打开时间线视图
@@ -11118,6 +12209,29 @@ var StoryWeaverPlugin = class extends import_obsidian14.Plugin {
     }
   }
   /**
+   * 打开项目管理视图
+   * Open project manager view
+   */
+  async openProjectManagerView() {
+    const { workspace } = this.app;
+    let leaf = null;
+    const leaves = workspace.getLeavesOfType(ProjectManagerView.VIEW_TYPE);
+    if (leaves.length > 0) {
+      leaf = leaves[0];
+    } else {
+      leaf = workspace.getLeaf(false);
+      if (leaf) {
+        await leaf.setViewState({
+          type: ProjectManagerView.VIEW_TYPE,
+          active: true
+        });
+      }
+    }
+    if (leaf) {
+      workspace.revealLeaf(leaf);
+    }
+  }
+  /**
    * 打开快速创建面板
    * Open quick create panel
    */
@@ -11145,14 +12259,14 @@ var StoryWeaverPlugin = class extends import_obsidian14.Plugin {
    * Handle file creation event
    */
   async onFileCreated(file) {
-    console.log(`File created: ${file.path}`);
+    Logger.debug(`File created: ${file.path}`, "Main");
     if (file.extension === "md") {
       setTimeout(async () => {
         const result = await this.templateService.applyTemplateToNewFile(file);
         if (result.success) {
-          console.log(`Template applied: ${result.templateType} template to ${file.path}`);
+          Logger.debug(`Template applied: ${result.templateType} template to ${file.path}`, "Main");
         } else if (result.error && !result.error.includes("File not in template-applicable folder")) {
-          console.warn(`Failed to apply template to ${file.path}: ${result.error}`);
+          Logger.warn(`Failed to apply template to ${file.path}: ${result.error}`, "Main");
         }
       }, 100);
     }
@@ -11162,21 +12276,21 @@ var StoryWeaverPlugin = class extends import_obsidian14.Plugin {
    * Handle file deletion event
    */
   onFileDeleted(file) {
-    console.log(`File deleted: ${file.path}`);
+    Logger.debug(`File deleted: ${file.path}`, "Main");
   }
   /**
    * 文件重命名事件处理
    * Handle file rename event
    */
   onFileRenamed(file, oldPath) {
-    console.log(`File renamed: ${oldPath} -> ${file.path}`);
+    Logger.debug(`File renamed: ${oldPath} -> ${file.path}`, "Main");
   }
   /**
    * 元数据变化事件处理
    * Handle metadata change event
    */
   onMetadataChanged(file) {
-    console.log(`Metadata changed: ${file.path}`);
+    Logger.debug(`Metadata changed: ${file.path}`, "Main");
   }
   /**
    * 活动叶子变化事件处理
@@ -11186,7 +12300,7 @@ var StoryWeaverPlugin = class extends import_obsidian14.Plugin {
     if (leaf && leaf.view.getViewType() === "markdown") {
       const file = this.app.workspace.getActiveFile();
       if (file) {
-        console.log(`Active file changed: ${file.path}`);
+        Logger.debug(`Active file changed: ${file.path}`, "Main");
         if (this.projectSwitchDebounceTimer) {
           clearTimeout(this.projectSwitchDebounceTimer);
         }
@@ -11194,11 +12308,11 @@ var StoryWeaverPlugin = class extends import_obsidian14.Plugin {
           try {
             const projectSwitched = await this.projectService.autoLoadProject(file.path);
             if (projectSwitched) {
-              console.log("Project switched automatically, refreshing views...");
+              Logger.info("Project switched automatically, refreshing views...", "Main");
               this.notifyViewsProjectLoaded();
             }
           } catch (error) {
-            console.error("Failed to auto-switch project:", error);
+            Logger.error("Failed to auto-switch project", "Main", error);
           }
         }, 300);
       }
@@ -11209,7 +12323,7 @@ var StoryWeaverPlugin = class extends import_obsidian14.Plugin {
    * Handle file menu event (context menu)
    */
   onFileMenu(menu, file) {
-    if (!(file instanceof import_obsidian14.TFolder)) {
+    if (!(file instanceof import_obsidian15.TFolder)) {
       return;
     }
     if (!this.projectService.currentProject) {
@@ -11237,13 +12351,13 @@ var StoryWeaverPlugin = class extends import_obsidian14.Plugin {
   async createDefaultTemplates() {
     try {
       if (!this.projectService.currentProject) {
-        console.warn("No project loaded. Please create or load a project first.");
+        Logger.warn("No project loaded. Please create or load a project first.", "Main");
         return;
       }
       await this.templateService.createDefaultTemplateFiles();
-      console.log("Default template files created successfully");
+      Logger.info("Default template files created successfully", "Main");
     } catch (error) {
-      console.error("Failed to create default template files:", error);
+      Logger.error("Failed to create default template files", "Main", error);
     }
   }
   /**
@@ -11263,12 +12377,12 @@ var StoryWeaverPlugin = class extends import_obsidian14.Plugin {
   async mergeChapterForWriting(chapterPath) {
     try {
       if (!this.projectService.currentProject) {
-        console.warn("No project loaded");
+        Logger.warn("No project loaded", "Main");
         return;
       }
       await this.immersiveWritingService.openMergedChapterEditor(chapterPath);
     } catch (error) {
-      console.error("Failed to merge chapter for writing:", error);
+      Logger.error("Failed to merge chapter for writing", "Main", error);
     }
   }
   /**
@@ -11305,7 +12419,7 @@ var StoryWeaverPlugin = class extends import_obsidian14.Plugin {
    */
   async activateFullVersion(activationCode) {
     try {
-      console.log(`\u{1F511} Attempting to activate with code: ${activationCode}`);
+      Logger.debug(`Attempting to activate with code: ${activationCode}`, "Main");
       const result = await this.activationService.verifyActivationCode(activationCode);
       if (result.success) {
         this.settings.licenseType = "full";
@@ -11315,14 +12429,14 @@ var StoryWeaverPlugin = class extends import_obsidian14.Plugin {
         this.activationService.saveLicenseInfo("full", activationCode);
         this.projectService.updateSettings(this.settings);
         this.onLicenseStatusChanged("full");
-        console.log(`\u2705 Full version activated successfully`);
+        Logger.info("Full version activated successfully", "Main");
       }
       return {
         success: result.success,
         message: result.message
       };
     } catch (error) {
-      console.error("\u274C Activation failed:", error);
+      Logger.error("Activation failed", "Main", error);
       return {
         success: false,
         message: "\u6FC0\u6D3B\u8FC7\u7A0B\u4E2D\u53D1\u751F\u9519\u8BEF\uFF0C\u8BF7\u7A0D\u540E\u91CD\u8BD5"
@@ -11334,7 +12448,7 @@ var StoryWeaverPlugin = class extends import_obsidian14.Plugin {
    * Handle license status change
    */
   onLicenseStatusChanged(newLicenseType) {
-    console.log(`\u{1F4C4} License status changed to: ${newLicenseType}`);
+    Logger.info(`License status changed to: ${newLicenseType}`, "Main");
     this.updateUIForLicenseChange(newLicenseType);
   }
   /**
@@ -11342,7 +12456,7 @@ var StoryWeaverPlugin = class extends import_obsidian14.Plugin {
    * Update UI for license change
    */
   updateUIForLicenseChange(licenseType) {
-    console.log(`\u{1F504} UI updated for license type: ${ActivationService.getLicenseDisplayName(licenseType)}`);
+    Logger.debug(`UI updated for license type: ${ActivationService.getLicenseDisplayName(licenseType)}`, "Main");
   }
   /**
    * 同步许可证状态
@@ -11352,7 +12466,7 @@ var StoryWeaverPlugin = class extends import_obsidian14.Plugin {
     try {
       const localLicenseType = this.activationService.checkLocalLicenseStatus();
       if (localLicenseType !== this.settings.licenseType) {
-        console.log(`\u{1F4C4} Syncing license status: ${this.settings.licenseType} -> ${localLicenseType}`);
+        Logger.debug(`Syncing license status: ${this.settings.licenseType} -> ${localLicenseType}`, "Main");
         this.settings.licenseType = localLicenseType;
         if (localLicenseType === "full") {
           const licenseInfo = this.activationService.loadLicenseInfo();
@@ -11362,10 +12476,10 @@ var StoryWeaverPlugin = class extends import_obsidian14.Plugin {
           }
         }
         await this.saveSettings();
-        console.log(`\u2705 License status synced to: ${ActivationService.getLicenseDisplayName(localLicenseType)}`);
+        Logger.info(`License status synced to: ${ActivationService.getLicenseDisplayName(localLicenseType)}`, "Main");
       }
     } catch (error) {
-      console.error("\u274C Failed to sync license status:", error);
+      Logger.error("Failed to sync license status", "Main", error);
     }
   }
   /**
